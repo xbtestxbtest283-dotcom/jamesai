@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: james-ai
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_IMAGE_MODEL
+        value: gpt-image-2
+      - key: FRONTEND_ORIGIN
+        value: "*"

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="James AI - Chat, image creation, photo understanding and file analysis">
+  <title>James AI</title>
+  <link rel="icon" type="image/jpeg" href="jamesai-logo.jpg">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <script>window.JAMESAI_API_BASE_URL = "";</script>
+  <meta name="theme-color" content="#0b0d12">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button id="mobileMenuBtn" class="icon-btn mobile-only" aria-label="Menu">☰</button>
+      <div class="brand">
+        <img class="logo" src="jamesai-logo.jpg" alt="James AI logo">
+        <div><h1>James AI</h1><p><span class="online-dot"></span> AI Assistant</p></div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside id="sidebar" class="sidebar">
+        <button id="newChatBtn" class="new-chat">＋ New chat</button>
+        <div class="menu-label">WORKSPACE</div>
+        <button class="nav-item active" data-view="chat"><span>💬</span> Chat</button>
+        <button class="nav-item" data-view="images"><span>🖼️</span> Photo Studio</button>
+        <button class="nav-item" data-view="history"><span>🕘</span> History</button>
+
+        <div class="menu-label">TOOLS</div>
+        <button class="nav-item" data-prompt="Help me with programming or code."><span>💻</span> Programming</button>
+        <button class="nav-item" data-prompt="Help me study this topic step by step."><span>📚</span> Study</button>
+        <button class="nav-item" data-prompt="Translate this for me."><span>🌐</span> Translate</button>
+        <button class="nav-item" data-prompt="Help me write or rewrite this."><span>✍️</span> Writing</button>
+        <button class="nav-item" data-prompt="Help me solve this math problem step by step."><span>🧮</span> Math</button>
+
+        <div class="sidebar-bottom">
+          <button class="nav-item" data-view="settings"><span>⚙️</span> Settings</button>
+          <div class="side-note"><strong>James AI</strong><br><span>Chat, photos, files and image creation.</span></div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section id="chatView" class="view active">
+          <div id="messages" class="messages">
+            <div class="welcome">
+              <img class="welcome-logo" src="jamesai-logo.jpg" alt="James AI logo">
+              <h2>What can I help with?</h2>
+              <p>စာမေးနိုင်ပါတယ်၊ Photo/File ပို့ပြီး မေးနိုင်ပါတယ်၊ ပုံလည်း ဖန်တီးနိုင်ပါတယ်။</p>
+              <div class="quick-grid">
+                <button class="quick" data-prompt="Python ကို beginner အနေနဲ့ ဘယ်လိုစလေ့လာရမလဲ?">💻 Coding</button>
+                <button class="quick" data-prompt="Photosynthesis ကို ရိုးရိုးရှင်းရှင်းရှင်းပြပါ။">📚 Study</button>
+                <button class="quick" data-prompt="2x + 7 = 19 ကို အဆင့်လိုက်ဖြေရှင်းပေးပါ။">🧮 Math</button>
+                <button class="quick" data-prompt="ဒီစာကို English လို ဘာသာပြန်ပေးပါ။">🌐 Translate</button>
+              </div>
+            </div>
+          </div>
+          <div id="typing" class="typing hidden"><span></span><span></span><span></span> James AI စဉ်းစားနေသည်...</div>
+
+          <div id="attachmentPreview" class="attachment-preview hidden"></div>
+          <form id="chatForm" class="composer">
+            <input id="fileInput" type="file" hidden multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
+            <button type="button" id="attachBtn" class="attach-btn" title="Photo / File attach">＋</button>
+            <textarea id="messageInput" rows="1" placeholder="Message James AI..." autocomplete="off"></textarea>
+            <button id="sendButton" class="send-btn" type="submit" aria-label="Send">➤</button>
+          </form>
+          <p class="disclaimer">Photo/File ပို့ရာမှာ တစ်ဖိုင် 6 MB အထိ၊ တစ်ကြိမ် 6 ဖိုင်အထိ။</p>
+        </section>
+
+        <section id="imagesView" class="view">
+          <div class="tool-header"><div><h2>🖼️ Photo Studio</h2><p>ပုံကို ဒီ browser ထဲမှာပဲ ပြင်နိုင်ပါတယ် — API credit မလိုပါ။</p></div></div>
+          <div class="image-panel photo-studio">
+            <div class="photo-upload-row">
+              <label class="primary-btn upload-photo-btn" for="photoEditorInput">📷 Choose photo</label>
+              <input id="photoEditorInput" type="file" accept="image/*" hidden>
+              <button id="clearPhotoBtn" class="secondary-btn" type="button">↺ Reset</button>
+            </div>
+            <div id="photoEditorStatus" class="tool-status">ပုံတစ်ပုံရွေးပြီး စတင်ပါ။</div>
+            <div class="photo-editor-grid">
+              <div class="canvas-wrap"><canvas id="photoCanvas"></canvas><div id="photoEmpty" class="photo-empty">📷<br>Photo preview</div></div>
+              <div class="photo-controls">
+                <div class="control-group"><label>Brightness <span id="brightnessValue">100%</span></label><input id="brightnessControl" type="range" min="40" max="160" value="100"></div>
+                <div class="control-group"><label>Contrast <span id="contrastValue">100%</span></label><input id="contrastControl" type="range" min="40" max="160" value="100"></div>
+                <div class="control-group"><label>Grayscale <span id="grayscaleValue">0%</span></label><input id="grayscaleControl" type="range" min="0" max="100" value="0"></div>
+                <div class="control-buttons">
+                  <button id="rotateLeftBtn" class="secondary-btn" type="button">↶ Rotate</button>
+                  <button id="rotateRightBtn" class="secondary-btn" type="button">↷ Rotate</button>
+                </div>
+                <div class="text-tools">
+                  <input id="photoTextInput" type="text" placeholder="ပုံပေါ် စာထည့်ရန်">
+                  <button id="addPhotoTextBtn" class="secondary-btn" type="button">＋ Add text</button>
+                </div>
+                <div class="download-tools">
+                  <select id="photoFormat"><option value="image/png">PNG</option><option value="image/jpeg">JPG</option><option value="image/webp">WEBP</option></select>
+                  <button id="downloadPhotoBtn" class="primary-btn" type="button">⬇ Download</button>
+                </div>
+              </div>
+            </div>
+            <p class="photo-note">ပုံကို browser ထဲမှာပဲ ဖတ်/ပြင်/သိမ်းပါတယ်။ ရွေးထားတဲ့ပုံကို server သို့ မပို့ပါ။</p>
+          </div>
+        </section>
+
+        <section id="historyView" class="view">
+          <div class="tool-header"><div><h2>🕘 History</h2><p>ဒီ browser မှာ သိမ်းထားတဲ့ chat history။</p></div></div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+
+        <section id="settingsView" class="view">
+          <div class="tool-header"><div><h2>⚙️ Settings</h2><p>James AI settings</p></div></div>
+          <div class="settings-card">
+            <div class="setting-row"><div><strong>AI model</strong><p>Server-side environment variable နဲ့ သတ်မှတ်ထားပါတယ်။</p></div><span class="status-pill">API</span></div>
+            <div class="setting-row"><div><strong>Attachments</strong><p>Photo, PDF, TXT, CSV, Markdown, JSON နဲ့ Office files တွေကို chat ထဲကနေ ပို့နိုင်ပါတယ်။</p></div><span class="status-pill">ON</span></div>
+            <div class="setting-row"><div><strong>Clear local history</strong><p>ဒီ browser ထဲက သိမ်းထားတဲ့ chat history ကိုဖျက်မယ်။</p></div><button id="clearHistoryBtn" class="danger-btn">Clear</button></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="script.js"></script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
+</body>
+</html>

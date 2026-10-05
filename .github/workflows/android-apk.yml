@@ -1,0 +1,42 @@
+name: Build James AI Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAMESAI_URL: ${{ vars.JAMESAI_URL }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Capacitor
+        run: npm install --no-save @capacitor/cli@latest @capacitor/core@latest @capacitor/android@latest
+      - name: Create Android project
+        run: |
+          node -e "const fs=require('fs'); const p='mobile/capacitor.config.ts'; let s=fs.readFileSync(p,'utf8'); s=s.replace('https://YOUR-JAMESAI-DOMAIN.example.com', process.env.JAMESAI_URL || 'https://YOUR-JAMESAI-DOMAIN.example.com'); fs.writeFileSync(p,s);"
+          cp mobile/capacitor.config.ts ./capacitor.config.ts
+          npx cap add android
+          npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jamesai-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
