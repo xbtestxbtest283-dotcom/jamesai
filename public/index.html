@@ -20,6 +20,7 @@
         <img class="logo" src="jamesai-logo.jpg" alt="James AI logo">
         <div><h1>James AI</h1><p><span class="online-dot"></span> AI Assistant</p></div>
       </div>
+      <div class="top-actions"><button id="accountBtn" class="secondary-btn account-btn" type="button"><img id="accountAvatar" class="account-avatar hidden" src="" alt="Google account"><span id="accountBtnText">Sign in / Sign up</span></button></div>
     </header>
 
     <div class="layout">
@@ -117,6 +118,18 @@
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <div id="accountModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card account-modal-card">
+      <button id="accountModalClose" class="modal-close" type="button" aria-label="Close">×</button>
+      <img class="logo small" src="jamesai-logo.jpg" alt="James AI logo">
+      <h2>Welcome to James AI</h2>
+      <p>Google account နဲ့ Login / Sign up လုပ်နိုင်ပါတယ်။</p>
+      <div id="googleSignInButton" class="google-button"></div>
+      <button id="googleFallbackBtn" class="primary-btn google-fallback hidden" type="button">Continue with Google</button>
+      <p id="accountStatus" class="modal-hint">Google Login / Sign up</p>
     </div>
   </div>
 

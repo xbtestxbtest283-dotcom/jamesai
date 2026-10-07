@@ -3,6 +3,88 @@
 const API_BASE_URL = String(window.JAMESAI_API_BASE_URL || "").replace(/\/$/, "");
 const apiUrl = (path) => `${API_BASE_URL}${path}`;
 
+let googleClientId = "";
+let googleCredential = localStorage.getItem("jamesai_google_credential") || "";
+let googleUser = JSON.parse(localStorage.getItem("jamesai_google_user") || "null");
+let googleReady = false;
+
+function isLoggedIn() {
+  return Boolean(googleCredential && googleUser);
+}
+
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (googleCredential) headers.Authorization = `Bearer ${googleCredential}`;
+  return headers;
+}
+
+function applyAuthGate() {
+  const modal = $("#accountModal");
+  if (!modal) return;
+  const close = $("#accountModalClose");
+  const signedIn = isLoggedIn();
+  modal.classList.toggle("mandatory", !signedIn);
+  if (close) {
+    close.classList.toggle("hidden", !signedIn);
+    close.disabled = !signedIn;
+  }
+  document.body.classList.toggle("auth-required", !signedIn);
+  if (!signedIn) {
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function updateAccountButton() {
+  const btn = $("#accountBtn");
+  const avatar = $("#accountAvatar");
+  const text = $("#accountBtnText");
+  if (!btn) return;
+  if (isLoggedIn()) {
+    const picture = googleUser?.picture || "";
+    if (avatar && picture) {
+      avatar.src = picture;
+      avatar.classList.remove("hidden");
+    }
+    if (text) text.textContent = googleUser?.name || "Google Account";
+    btn.title = googleUser?.email || "Google account";
+  } else {
+    if (avatar) { avatar.src = ""; avatar.classList.add("hidden"); }
+    if (text) text.textContent = "Sign in / Sign up";
+    btn.title = "Sign in / Sign up";
+  }
+}
+
+async function loadGoogleConfig() {
+  try {
+    const r = await fetch(apiUrl("/api/config"));
+    const data = await r.json();
+    googleClientId = String(data.googleClientId || "").trim();
+    window.JAMESAI_GOOGLE_CLIENT_ID = googleClientId;
+  } catch {}
+}
+
+async function validateStoredLogin() {
+  if (!googleCredential) return false;
+  try {
+    const r = await fetch(apiUrl("/api/auth/google"), {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error("invalid");
+    googleUser = data.user;
+    localStorage.setItem("jamesai_google_user", JSON.stringify(googleUser));
+    return true;
+  } catch {
+    googleCredential = "";
+    googleUser = null;
+    localStorage.removeItem("jamesai_google_credential");
+    localStorage.removeItem("jamesai_google_user");
+    return false;
+  }
+}
+
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 
@@ -61,9 +143,43 @@ function addMessage(text, role, isError = false, attachments = []) {
 
   if (text) {
     const textNode = document.createElement("div");
+    textNode.className = "message-text";
     textNode.textContent = text;
     bubble.appendChild(textNode);
   }
+
+  if (role === "ai" && text && !isError) {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+    actions.innerHTML = `
+      <button type="button" class="message-action" data-action="copy" title="Copy">📋 Copy</button>
+      <button type="button" class="message-action" data-action="share" title="Share">↗ Share</button>
+    `;
+    actions.querySelector('[data-action="copy"]').addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("✅ Copied");
+      } catch {
+        const ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); ta.remove();
+        toast("✅ Copied");
+      }
+    });
+    actions.querySelector('[data-action="share"]').addEventListener("click", async () => {
+      if (navigator.share) {
+        try { await navigator.share({ title: "James AI", text }); }
+        catch (e) { if (e?.name !== "AbortError") toast("Share မလုပ်နိုင်သေးပါ။"); }
+      } else {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast("📋 Share မရသေးလို့ စာကို Copy လုပ်ပေးထားပါတယ်။");
+        } catch { toast("Share မရနိုင်တဲ့ browser ဖြစ်ပါတယ်။"); }
+      }
+    });
+    bubble.appendChild(actions);
+  }
+
   row.appendChild(bubble);
   messages.appendChild(row);
   messages.scrollTop = messages.scrollHeight;
@@ -149,6 +265,11 @@ async function handleFiles(files) {
 }
 
 async function sendMessage(text) {
+  if (!isLoggedIn()) {
+    openAccountModal();
+    toast("Google Login လုပ်ပြီးမှ James AI ကို အသုံးပြုနိုင်ပါတယ်။");
+    return;
+  }
   const message = text.trim();
   if (busy || (!message && !pendingAttachments.length)) return;
 
@@ -163,7 +284,7 @@ async function sendMessage(text) {
   try {
     const r = await fetch(apiUrl("/api/chat"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ message, history: oldHistory, attachments })
     });
     const data = await r.json().catch(() => ({}));
@@ -239,6 +360,172 @@ newChatBtn.addEventListener("click", () => {
 });
 
 mobileMenuBtn.addEventListener("click", () => sidebar.classList.toggle("open"));
+
+// Account / Google Login & Sign up
+const accountBtn = $("#accountBtn");
+const accountModal = $("#accountModal");
+const accountModalClose = $("#accountModalClose");
+const googleFallbackBtn = $("#googleFallbackBtn");
+const accountStatus = $("#accountStatus");
+
+function showGoogleError(message) {
+  accountStatus.textContent = message;
+  toast(message);
+}
+
+function googleOAuthPopup() {
+  return new Promise((resolve, reject) => {
+    const redirectUri = window.location.origin + "/oauth2callback";
+    const nonce = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem("jamesai_google_nonce", nonce);
+    const handoffKey = `jamesai_google_handoff_${nonce}`;
+    sessionStorage.setItem("jamesai_google_handoff_key", handoffKey);
+
+    const params = new URLSearchParams({
+      client_id: googleClientId,
+      redirect_uri: redirectUri,
+      response_type: "id_token",
+      scope: "openid email profile",
+      nonce,
+      state: nonce,
+      prompt: "select_account"
+    });
+
+    const width = 500, height = 650;
+    const left = Math.max(0, Math.round((screen.width - width) / 2));
+    const top = Math.max(0, Math.round((screen.height - height) / 2));
+    const popup = window.open(
+      `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      "jamesai_google_login",
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+
+    if (!popup) return reject(new Error("Google popup ကို Browser က block လုပ်ထားပါတယ်။"));
+
+    let finished = false;
+    const finish = (credential, error) => {
+      if (finished) return;
+      finished = true;
+      clearInterval(timer);
+      window.removeEventListener("message", onMessage);
+      try { popup.close(); } catch {}
+      try { sessionStorage.removeItem("jamesai_google_handoff_key"); } catch {}
+      if (error) reject(new Error(error));
+      else if (credential) resolve(credential);
+      else reject(new Error("Google credential မရပါ။"));
+    };
+
+    const timer = setInterval(() => {
+      try {
+        const raw = localStorage.getItem(handoffKey);
+        if (raw) {
+          localStorage.removeItem(handoffKey);
+          const result = JSON.parse(raw);
+          finish(result.credential || "", result.error || "");
+          return;
+        }
+        if (popup.closed) finish("", "Google Login ကို ပိတ်လိုက်ပါတယ်။");
+      } catch {}
+    }, 250);
+
+    function onMessage(event) {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.type !== "JAMESAI_GOOGLE_RESULT") return;
+      finish(event.data.credential || "", event.data.error || "");
+    }
+    window.addEventListener("message", onMessage);
+  });
+}
+
+async function renderGoogleButton() {
+  if (!googleClientId) {
+    googleFallbackBtn.classList.add("hidden");
+    accountStatus.textContent = "Google Login မရသေးပါ — server မှာ GOOGLE_CLIENT_ID ထည့်ပါ။";
+    return false;
+  }
+
+  const target = $("#googleSignInButton");
+  target.innerHTML = `<button type="button" id="customGoogleLoginBtn" class="primary-btn google-custom-btn">Continue with Google</button>`;
+  googleFallbackBtn.classList.add("hidden");
+
+  $("#customGoogleLoginBtn")?.addEventListener("click", async () => {
+    try {
+      accountStatus.textContent = "Google account ရွေးနေပါ...";
+      const credential = await googleOAuthPopup();
+      if (!credential) throw new Error("Google credential မရပါ။");
+
+      googleCredential = credential;
+      const r = await fetch(apiUrl("/api/auth/google"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || "Google account verification failed.");
+
+      googleUser = data.user;
+      localStorage.setItem("jamesai_google_credential", googleCredential);
+      localStorage.setItem("jamesai_google_user", JSON.stringify(googleUser));
+      updateAccountButton();
+      applyAuthGate();
+      closeAccountModal();
+      toast("Google Login successful ✅");
+    } catch (e) {
+      googleCredential = "";
+      googleUser = null;
+      localStorage.removeItem("jamesai_google_credential");
+      localStorage.removeItem("jamesai_google_user");
+      showGoogleError("❌ Google Login မအောင်မြင်ပါ။ " + (e.message || ""));
+    }
+  });
+  return true;
+}
+
+function openAccountModal() {
+  accountModal.classList.remove("hidden");
+  accountModal.setAttribute("aria-hidden", "false");
+  applyAuthGate();
+  renderGoogleButton();
+}
+
+function closeAccountModal() {
+  if (!isLoggedIn()) {
+    applyAuthGate();
+    return;
+  }
+  accountModal.classList.add("hidden");
+  accountModal.setAttribute("aria-hidden", "true");
+}
+
+accountBtn?.addEventListener("click", openAccountModal);
+accountModalClose?.addEventListener("click", closeAccountModal);
+accountModal?.addEventListener("click", e => {
+  if (e.target === accountModal && isLoggedIn()) closeAccountModal();
+});
+
+googleFallbackBtn?.addEventListener("click", async () => {
+  const ok = await renderGoogleButton();
+  if (ok) {
+    try {
+      window.google.accounts.id.prompt();
+      accountStatus.textContent = "Google account ရွေးပြီး Login ဝင်ပါ။";
+    } catch {
+      showGoogleError("Google Login ကို ပြန်ဖွင့်မရပါ။");
+    }
+  }
+});
+
+async function initAuthentication() {
+  await loadGoogleConfig();
+  const valid = await validateStoredLogin();
+  updateAccountButton();
+  applyAuthGate();
+
+  if (!valid) {
+    openAccountModal();
+  } else {
+    closeAccountModal();
+  }
+}
 
 const photoInput = $("#photoEditorInput");
 const photoCanvas = $("#photoCanvas");
@@ -361,3 +648,6 @@ $("#clearHistoryBtn").addEventListener("click", () => {
 window.addEventListener("load", () => {
   renderPendingAttachments();
 });
+
+
+initAuthentication();

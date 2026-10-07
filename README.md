@@ -85,3 +85,33 @@ Open `http://localhost:3000`.
 ## Android
 
 The included Capacitor workflow can build an Android APK after you have a permanent HTTPS James AI URL. Set the GitHub repository variable `JAMESAI_URL` to your deployed URL and run the **Build James AI Android APK** workflow.
+
+
+## Google Login / Sign up
+
+James AI now requires Google Login before the app can be used. Google Sign in and Google Sign up use the same Google Identity Services button.
+
+1. Create a Google OAuth 2.0 **Web application** client in Google Cloud Console.
+2. Add the exact deployed James AI origin to **Authorized JavaScript origins** (for local use: `http://localhost:3000`).
+3. Put the client ID in `.env`:
+   `GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_CLIENT_ID`
+4. Restart the server.
+
+The server verifies the Google ID token before allowing `/api/chat` and `/api/images`.
+
+
+## Important Google Login fix
+
+The Google button cannot work until `GOOGLE_CLIENT_ID` is configured. Use a **Google OAuth 2.0 Web application** client, not an Android client, for the browser/PWA version.
+
+For the deployed James AI site, add this exact origin to **Authorized JavaScript origins**:
+
+`https://jamesai-2.onrender.com`
+
+Then set this Render environment variable:
+
+`GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_WEB_CLIENT_ID`
+
+Do not put the client secret or OpenAI key in `public/`.
+
+For phone use, the most reliable path is to open the deployed HTTPS James AI URL in Android Chrome and use **Add to Home screen**. The included APK workflow is a Capacitor wrapper, but Google Identity Services can be restricted inside embedded WebViews; the Chrome/PWA route avoids that WebView limitation.

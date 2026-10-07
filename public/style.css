@@ -27,3 +27,40 @@ button{cursor:pointer}
 
 /* Photo Studio */
 .photo-upload-row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.upload-photo-btn{display:inline-block;cursor:pointer}.photo-editor-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.8fr);gap:16px}.canvas-wrap{position:relative;min-height:360px;display:flex;align-items:center;justify-content:center;background:#07090c;border:1px solid var(--border);border-radius:14px;overflow:hidden}.canvas-wrap canvas{display:block;max-width:100%;max-height:620px;width:auto;height:auto}.photo-empty{position:absolute;text-align:center;color:var(--muted);line-height:1.8;pointer-events:none}.photo-controls{display:flex;flex-direction:column;gap:13px}.control-group{padding:11px;border:1px solid var(--border);border-radius:12px;background:var(--panel2)}.control-group label{display:flex;justify-content:space-between;color:#dfe6ee;font-size:13px;margin-bottom:7px}.control-group input{width:100%}.control-buttons,.download-tools,.text-tools{display:flex;gap:8px}.text-tools input,.download-tools select{flex:1;min-width:0;background:#0b0d10;color:#fff;border:1px solid var(--border);border-radius:10px;padding:10px;outline:none}.download-tools select{background:var(--panel2)}.photo-note{color:var(--muted);font-size:12px;margin:14px 2px 0}.hidden{display:none!important}@media(max-width:850px){.photo-editor-grid{grid-template-columns:1fr}.canvas-wrap{min-height:280px}}
+
+/* Added: message Copy / Share actions and account controls */
+.message-actions{display:flex;gap:6px;margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06)}
+.message-action{border:0;border-radius:8px;padding:5px 8px;background:transparent;color:#9aa5b1;font-size:11px}
+.message-action:hover{background:#202731;color:#fff}
+.account-btn{white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+.account-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;display:block}.account-avatar.hidden{display:none}
+.account-modal-card{padding-top:30px}
+.google-fallback{width:100%;margin:10px 0 0}
+
+
+/* Google Login gate — keeps the existing James AI design unchanged. */
+body.auth-required .app-shell {
+  pointer-events: none;
+  user-select: none;
+}
+#accountModal.mandatory {
+  z-index: 9999;
+}
+#accountModal.mandatory .modal-card {
+  pointer-events: auto;
+}
+#accountModal.mandatory .modal-close {
+  display: none !important;
+}
+#accountModal.mandatory .google-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 8px;
+}
+.account-btn {
+  max-width: 220px;
+}
+
+.google-custom-btn { width: 100%; min-height: 46px; font-weight: 700; }
