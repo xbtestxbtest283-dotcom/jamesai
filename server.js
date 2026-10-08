@@ -542,6 +542,15 @@ app.post("/api/images", requireGoogleLogin, async (req, res) => {
     });
   }
 });
+app.get('/download-apk', (req, res) => {
+  const apkPath = path.join(__dirname, 'James_AI-successful.apk');
+
+  if (!fs.existsSync(apkPath)) {
+    return res.status(404).send('APK file not found.');
+  }
+
+  res.download(apkPath, 'James_AI-successful.apk');
+});
 
 const server = app.listen(PORT, HOST, () => {
   console.log("");
