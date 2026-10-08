@@ -552,7 +552,7 @@ app.get('/download-apk', (req, res) => {
   res.download(apkPath, 'James_AI-successful.apk');
 });
 
-const server = app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log("");
   console.log("=================================");
   console.log("       JAMES AI SERVER");
