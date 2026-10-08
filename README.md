@@ -115,3 +115,33 @@ Then set this Render environment variable:
 Do not put the client secret or OpenAI key in `public/`.
 
 For phone use, the most reliable path is to open the deployed HTTPS James AI URL in Android Chrome and use **Add to Home screen**. The included APK workflow is a Capacitor wrapper, but Google Identity Services can be restricted inside embedded WebViews; the Chrome/PWA route avoids that WebView limitation.
+
+
+## Plans / Usage Limits
+
+The project now has server-enforced plans:
+
+- Free — 30 messages + 3 AI images. When either quota is reached, the free quota resets 24 hours after the limit was reached.
+- Plus 7 Days — 50 messages + 5 AI images for 7 days.
+- Plus 15 Days — 50 messages + 5 AI images for 15 days.
+- Plus Pro — 30 days with configurable "Limited" quotas (`PRO_MESSAGE_LIMIT` / `PRO_IMAGE_LIMIT`, defaults 500 / 50).
+
+Plan prices are controlled by `PLAN_PLUS7_PRICE`, `PLAN_PLUS15_PRICE`, and `PLAN_PRO30_PRICE`.
+
+## Payment activation
+
+Set the three `PAYMENT_*_URL` variables to your real payment/checkout links. The Purchase page creates an order ID for each user.
+
+After you verify the payment with your payment provider, activate the plan with the protected server endpoint:
+
+```text
+POST /api/admin/activate
+x-admin-secret: YOUR_ADMIN_PAYMENT_SECRET
+Content-Type: application/json
+
+{"email":"customer@example.com","planId":"plus7"}
+```
+
+Use `plus15` or `pro30` for the other plans. This endpoint resets the paid-plan quota and starts the selected plan's duration.
+
+**Important:** Automatic payment verification requires a provider-specific webhook/API integration. Because no payment provider was specified, this ZIP includes the provider-neutral purchase/order + protected activation structure rather than pretending a payment was verified.

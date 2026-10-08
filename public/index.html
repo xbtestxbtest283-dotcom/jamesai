@@ -30,6 +30,7 @@
         <button class="nav-item active" data-view="chat"><span>💬</span> Chat</button>
         <button class="nav-item" data-view="images"><span>🖼️</span> Photo Studio</button>
         <button class="nav-item" data-view="history"><span>🕘</span> History</button>
+        <button class="nav-item" data-view="plans"><span>⭐</span> Plans & Purchase</button>
 
         <div class="menu-label">TOOLS</div>
         <button class="nav-item" data-prompt="Help me with programming or code."><span>💻</span> Programming</button>
@@ -73,6 +74,16 @@
 
         <section id="imagesView" class="view">
           <div class="tool-header"><div><h2>🖼️ Photo Studio</h2><p>ပုံကို ဒီ browser ထဲမှာပဲ ပြင်နိုင်ပါတယ် — API credit မလိုပါ။</p></div></div>
+          <div class="image-panel ai-image-generator">
+            <h3>✨ AI Image Generator</h3>
+            <p class="tool-sub">AI နဲ့ ပုံဖန်တီးတာက plan ရဲ့ Image quota ကို အသုံးပြုပါမယ်။</p>
+            <textarea id="imagePrompt" placeholder="ဖန်တီးချင်တဲ့ပုံကို ရေးပါ..."></textarea>
+            <div class="image-options">
+              <button id="generateImageBtn" class="primary-btn" type="button">✨ Generate Image</button>
+              <span id="imageQuotaHint" class="quota-hint"></span>
+            </div>
+            <div id="generatedImageResult" class="image-result hidden"></div>
+          </div>
           <div class="image-panel photo-studio">
             <div class="photo-upload-row">
               <label class="primary-btn upload-photo-btn" for="photoEditorInput">📷 Choose photo</label>
@@ -109,6 +120,13 @@
           <div id="historyList" class="history-list"></div>
         </section>
 
+        <section id="plansView" class="view">
+          <div class="tool-header"><div><h2>⭐ Plans & Purchase</h2><p>လက်ရှိ plan၊ အသုံးပြုထားသည့် quota နဲ့ upgrade ကို ဒီမှာ စီမံနိုင်ပါတယ်။</p></div></div>
+          <div id="usageCard" class="usage-card"></div>
+          <div id="plansGrid" class="plans-grid"></div>
+          <div class="payment-help">Payment လုပ်ပြီးရင် order ID ကို သိမ်းထားပါ။ Payment provider အတည်ပြုပြီး plan ကို activate လုပ်နိုင်ပါတယ်။</div>
+        </section>
+
         <section id="settingsView" class="view">
           <div class="tool-header"><div><h2>⚙️ Settings</h2><p>James AI settings</p></div></div>
           <div class="settings-card">
@@ -133,6 +151,13 @@
     </div>
   </div>
 
+  <div id="purchaseModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card purchase-card">
+      <button id="purchaseClose" class="modal-close" type="button" aria-label="Close">×</button>
+      <h2 id="purchaseTitle">Purchase Plan</h2>
+      <div id="purchaseBody"></div>
+    </div>
+  </div>
   <div id="toast" class="toast hidden"></div>
   <script src="script.js"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>

@@ -1,0 +1,22 @@
+{
+  "115481872484540924399": {
+    "sub": "115481872484540924399",
+    "email": "xbtestxbtest283@gmail.com",
+    "name": "xbtest xbtest",
+    "picture": "https://lh3.googleusercontent.com/a/ACg8ocIgGwfWu6BcFigIJXH3yhAWABzhdbnlHoltJfBxcbdaMFQKRQ=s96-c",
+    "plan": "free",
+    "planStartedAt": null,
+    "planExpiresAt": null,
+    "messageCount": 2,
+    "imageCount": 1,
+    "windowStartedAt": 1791465808193,
+    "freeResetAt": null,
+    "pendingPurchase": {
+      "orderId": "JAI-MUZKXFKE-6IQ2I",
+      "planId": "pro30",
+      "createdAt": 1791466548494,
+      "status": "pending",
+      "price": "70000 MMK"
+    }
+  }
+}

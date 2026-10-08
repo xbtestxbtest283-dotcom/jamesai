@@ -13,5 +13,33 @@ services:
         value: gpt-6-luna
       - key: OPENAI_IMAGE_MODEL
         value: gpt-image-2
+      - key: POLLINATIONS_API_KEY
+        sync: false
+      - key: POLLINATIONS_IMAGE_MODEL
+        value: flux
+      - key: GOOGLE_CLIENT_ID
+        value: 47483913221-hsng82ssnc7214afmvd6idnphlm6ebrn.apps.googleusercontent.com
       - key: FRONTEND_ORIGIN
         value: "*"
+      - key: WAVE_PAY_PHONE
+        sync: false
+      - key: WAVE_PAY_NAME
+        sync: false
+      - key: PLAN_PLUS7_PRICE
+        value: "10000 MMK"
+      - key: PLAN_PLUS15_PRICE
+        value: "25000 MMK"
+      - key: PLAN_PRO30_PRICE
+        value: "70000 MMK"
+      - key: PAYMENT_PLUS7_URL
+        value: ""
+      - key: PAYMENT_PLUS15_URL
+        value: ""
+      - key: PAYMENT_PRO30_URL
+        value: ""
+      - key: ADMIN_PAYMENT_SECRET
+        sync: false
+      - key: PRO_MESSAGE_LIMIT
+        value: "500"
+      - key: PRO_IMAGE_LIMIT
+        value: "50"

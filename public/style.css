@@ -64,3 +64,14 @@ body.auth-required .app-shell {
 }
 
 .google-custom-btn { width: 100%; min-height: 46px; font-weight: 700; }
+
+/* Plans / quota / purchase UI */
+.usage-card{margin:10px 25px 14px;padding:18px;border:1px solid var(--border);background:var(--panel);border-radius:16px}
+.usage-top{display:flex;align-items:center;justify-content:space-between;gap:10px}.usage-top h3{margin:3px 0 0;font-size:22px}.usage-label,.plan-badge{font-size:9px;letter-spacing:.12em;color:var(--muted)}
+.usage-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.usage-grid>div{padding:13px;border-radius:12px;background:var(--panel2);display:flex;flex-direction:column}.usage-grid strong{font-size:25px}.usage-grid span,.usage-foot,.tool-sub,.small-note{font-size:11px;color:var(--muted)}.usage-foot{margin-top:10px}
+.plans-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:10px 25px 15px}.plan-card{position:relative;padding:18px;border:1px solid var(--border);background:var(--panel);border-radius:16px}.plan-card.current{border-color:#19c37d}.plan-card h3{margin:7px 0 4px}.plan-price{font-size:19px;font-weight:800;margin:8px 0 12px}.plan-card ul{padding-left:18px;color:#cbd3dc;font-size:12px;line-height:1.9;min-height:82px}.plan-card button{width:100%}.payment-help{margin:0 25px 30px;padding:12px;border-radius:10px;background:#171b21;color:var(--muted);font-size:11px}.payment-result{margin-top:12px;text-align:left}.order-box{padding:12px;border:1px solid var(--border);border-radius:12px;background:#0d1116}.order-box code{display:block;margin:7px 0;padding:9px;border-radius:8px;background:#080a0d;color:#fff;word-break:break-all}.payment-link{display:inline-flex;text-decoration:none;margin-top:6px}.payment-warn{color:#ffb4ba;font-size:12px}.purchase-card{text-align:left}.purchase-card h2{text-align:center}.quota-hint{color:var(--muted);font-size:11px;align-self:center}
+.ai-image-generator h3{margin-top:0}.ai-image-generator textarea{width:100%;min-height:100px;resize:vertical;background:#0b0d10;color:#fff;border:1px solid var(--border);border-radius:12px;padding:13px;outline:none}.ai-image-generator .image-options{align-items:center}
+@media(max-width:950px){.plans-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.usage-card{margin:8px 14px 12px}.plans-grid{grid-template-columns:1fr;margin:8px 14px 15px}.payment-help{margin:0 14px 25px}.usage-grid{grid-template-columns:1fr 1fr}}
+
+.wavepay-box{margin:10px 0;padding:12px;border:1px solid rgba(25,195,125,.35);border-radius:12px;background:#10231c}.wave-number{font-size:20px;font-weight:800;margin:5px 0}.payment-input{display:block;width:100%;box-sizing:border-box;margin:6px 0 10px;padding:10px;background:#0b0d10;color:#fff;border:1px solid var(--border);border-radius:10px}.order-box label{display:block;margin-top:10px;font-size:12px;color:#cbd3dc}

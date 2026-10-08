@@ -294,6 +294,7 @@ async function sendMessage(text) {
     history.push({ role: "assistant", content: reply });
     history = history.slice(-60);
     saveHistory();
+    if (data.usage) { currentUsage = data.usage; updateUsageUI(); }
   } catch (e) {
     history = oldHistory;
     addMessage("⚠️ " + e.message, "ai", true);
@@ -328,6 +329,7 @@ function openView(view) {
   $(`#${view}View`)?.classList.add("active");
   $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   if (view === "history") renderHistory();
+  if (view === "plans") loadUsage();
   sidebar.classList.remove("open");
 }
 
@@ -468,6 +470,7 @@ async function renderGoogleButton() {
       updateAccountButton();
       applyAuthGate();
       closeAccountModal();
+      await loadUsage();
       toast("Google Login successful ✅");
     } catch (e) {
       googleCredential = "";
@@ -524,8 +527,125 @@ async function initAuthentication() {
     openAccountModal();
   } else {
     closeAccountModal();
+    await loadUsage();
   }
 }
+
+
+let currentUsage = null;
+
+function formatDate(ms) {
+  if (!ms) return "—";
+  try { return new Date(ms).toLocaleString(); } catch { return "—"; }
+}
+function updateUsageUI() {
+  const card = $("#usageCard");
+  const hint = $("#imageQuotaHint");
+  if (!currentUsage) {
+    if (card) card.innerHTML = '<div class="empty">Google Login ဝင်ပြီး usage ကို ကြည့်နိုင်ပါတယ်။</div>';
+    if (hint) hint.textContent = "";
+    return;
+  }
+  const p = currentUsage;
+  if (card) {
+    card.innerHTML = `
+      <div class="usage-top"><div><span class="usage-label">CURRENT PLAN</span><h3>${escapeHtml(p.name)}</h3></div>
+      <button id="refreshUsageBtn" class="secondary-btn" type="button">↻ Refresh</button></div>
+      <div class="usage-grid">
+        <div><strong>${p.messagesRemaining}</strong><span>Messages left / ${p.messagesLimit}</span></div>
+        <div><strong>${p.imagesRemaining}</strong><span>Images left / ${p.imagesLimit}</span></div>
+      </div>
+      <div class="usage-foot">${p.resetAt ? `Reset / Expire: ${escapeHtml(formatDate(p.resetAt))}` : "Free quota resets 24 hours after its usage window starts."}</div>`;
+    $("#refreshUsageBtn")?.addEventListener("click", loadUsage);
+  }
+  if (hint) hint.textContent = `${p.imagesRemaining} image${p.imagesRemaining === 1 ? "" : "s"} left`;
+}
+async function loadUsage() {
+  if (!isLoggedIn()) { currentUsage = null; updateUsageUI(); return; }
+  try {
+    const r = await fetch(apiUrl("/api/usage"), { headers: authHeaders() });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data.error || "Usage load failed");
+    currentUsage = data.plan;
+    updateUsageUI();
+    renderPlans(data.plans || []);
+  } catch (e) {
+    currentUsage = null;
+    updateUsageUI();
+  }
+}
+function renderPlans(plans) {
+  const grid = $("#plansGrid");
+  if (!grid) return;
+  grid.innerHTML = plans.map(p => {
+    const current = currentUsage?.id === p.id;
+    const paid = p.id !== "free";
+    return `<div class="plan-card ${current ? "current" : ""}">
+      <div class="plan-badge">${current ? "CURRENT" : paid ? "UPGRADE" : "DEFAULT"}</div>
+      <h3>${escapeHtml(p.name)}</h3>
+      <div class="plan-price">${escapeHtml(p.price)}</div>
+      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages</li><li>${p.images >= 50 ? "Limited" : p.images} Images</li><li>${p.durationDays ? `${p.durationDays} Days` : "24-hour rolling quota"}</li></ul>
+      ${paid ? `<button class="primary-btn plan-buy-btn" data-plan="${p.id}" type="button">${p.paymentUrl ? "Buy / Pay" : "Setup Payment"}</button>` : `<button class="secondary-btn" type="button" disabled>Free Plan</button>`}
+    </div>`;
+  }).join("");
+  grid.querySelectorAll(".plan-buy-btn").forEach(btn => btn.addEventListener("click", () => openPurchase(btn.dataset.plan, plans)));
+}
+async function openPurchase(planId, plans) {
+  const plan = plans.find(x => x.id === planId);
+  if (!plan) return;
+  const modal = $("#purchaseModal"), body = $("#purchaseBody"), title = $("#purchaseTitle");
+  title.textContent = `${plan.name} — Purchase`;
+  body.innerHTML = `<p><strong>Price:</strong> ${escapeHtml(plan.price)}</p>
+    <p><strong>Messages:</strong> ${plan.messages >= 500 ? "Limited" : plan.messages} &nbsp; <strong>Images:</strong> ${plan.images >= 50 ? "Limited" : plan.images}</p>
+    <p><strong>Duration:</strong> ${plan.durationDays} days</p>
+    <button id="createOrderBtn" class="primary-btn google-custom-btn" type="button">Create Order</button>
+    <div id="orderResult" class="payment-result"></div>`;
+  modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
+  $("#createOrderBtn").addEventListener("click", async () => {
+    const btn = $("#createOrderBtn"); btn.disabled = true; btn.textContent = "Creating...";
+    try {
+      const r = await fetch(apiUrl("/api/purchase"), { method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify({planId}) });
+      const data = await r.json().catch(()=>({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || "Order creation failed");
+      const wave = data.wavePayPhone ? `<div class="wavepay-box"><strong>WavePay</strong><div class="wave-number">${escapeHtml(data.wavePayPhone)}</div>${data.wavePayName ? `<div>${escapeHtml(data.wavePayName)}</div>` : ""}<div>ပေးရန် — <strong>${escapeHtml(data.price)}</strong></div></div>` : "";
+      const payment = data.paymentUrl ? `<a class="primary-btn payment-link" href="${escapeHtml(data.paymentUrl)}" target="_blank" rel="noopener">Open Payment</a>` : "";
+      $("#orderResult").innerHTML = `<div class="order-box"><strong>Order ID</strong><code>${escapeHtml(data.orderId)}</code>${wave}<p>${escapeHtml(data.instructions)}</p>${payment}<label>Transaction ID<input id="paymentTxId" class="payment-input" placeholder="ဥပမာ TX123456"></label><label>ငွေလွှဲ Screenshot<input id="paymentShot" class="payment-input" type="file" accept="image/*"></label><button id="submitPaymentBtn" class="primary-btn google-custom-btn" type="button">Submit Payment</button><div id="submitPaymentStatus" class="small-note"></div></div>`;
+      $("#submitPaymentBtn").addEventListener("click", async () => {
+        const tx = $("#paymentTxId").value.trim(); const file = $("#paymentShot").files[0];
+        if (!tx || !file) { $("#submitPaymentStatus").textContent = "Transaction ID နဲ့ Screenshot နှစ်ခုလုံးလိုပါတယ်။"; return; }
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try { const r2 = await fetch(apiUrl("/api/purchase/submit"), {method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify({transactionId:tx,screenshot:reader.result})}); const d2=await r2.json(); if(!r2.ok||!d2.ok) throw new Error(d2.error||"Submit failed"); $("#submitPaymentStatus").textContent=d2.message; $("#submitPaymentBtn").disabled=true; } catch(e) { $("#submitPaymentStatus").textContent=e.message; }
+        }; reader.readAsDataURL(file);
+      });
+    } catch(e) {
+      $("#orderResult").innerHTML = `<p class="payment-warn">${escapeHtml(e.message)}</p>`;
+    } finally { btn.disabled = false; btn.textContent = "Create Order"; }
+  });
+}
+$("#purchaseClose")?.addEventListener("click", () => { const m=$("#purchaseModal"); m.classList.add("hidden"); m.setAttribute("aria-hidden","true"); });
+$("#purchaseModal")?.addEventListener("click", e => { if (e.target.id === "purchaseModal") e.target.classList.add("hidden"); });
+
+$("#generateImageBtn")?.addEventListener("click", async () => {
+  if (!isLoggedIn()) return openAccountModal();
+  const prompt = ($("#imagePrompt")?.value || "").trim();
+  if (!prompt) return toast("Image prompt ရေးပါ။");
+  const btn = $("#generateImageBtn"); btn.disabled = true; btn.textContent = "Generating...";
+  try {
+    const r = await fetch(apiUrl("/api/images"), { method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify({prompt}) });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok || !data.ok) {
+      if (data.usage) { currentUsage = data.usage; updateUsageUI(); }
+      throw new Error(data.error || "Image generation failed");
+    }
+    currentUsage = data.usage || currentUsage; updateUsageUI();
+    const result = $("#generatedImageResult");
+    result.classList.remove("hidden");
+    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><a class="primary-btn" href="${data.image}" download="james-ai-generated.png">⬇ Download</a></div>`;
+  } catch(e) { toast("⚠️ " + e.message); }
+  finally { btn.disabled = false; btn.textContent = "✨ Generate Image"; }
+});
+
 
 const photoInput = $("#photoEditorInput");
 const photoCanvas = $("#photoCanvas");
