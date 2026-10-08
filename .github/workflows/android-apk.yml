@@ -23,7 +23,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Install dependencies
-        run: npm ci
+        run: npm install && npm install --save-dev typescript
       - name: Install Capacitor
         run: npm install --no-save @capacitor/cli@latest @capacitor/core@latest @capacitor/android@latest
       - name: Create Android project
