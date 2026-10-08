@@ -274,6 +274,25 @@ async function requireGoogleLogin(req, res, next) {
 }
 
 
+// Stable APK download endpoint. If a built APK is bundled locally, serve it.
+// Otherwise redirect to the configured release/download URL.
+app.get("/download-apk", (_req, res) => {
+  const localApk = path.join(__dirname, "public", "downloads", "jamesai.apk");
+  if (fs.existsSync(localApk)) {
+    return res.download(localApk, "James AI.apk");
+  }
+
+  const configuredUrl = String(process.env.APK_DOWNLOAD_URL || "").trim();
+  if (configuredUrl) return res.redirect(configuredUrl);
+
+  return res.status(404).type("html").send(`<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>James AI APK</title></head>
+<body style="font-family:system-ui,sans-serif;background:#0b0d12;color:#fff;padding:32px;text-align:center">
+<h2>James AI APK မရသေးပါ</h2>
+<p>GitHub Actions မှာ <b>Build James AI Android APK</b> workflow ကို Run လုပ်ပြီး APK build ပြီးမှ ဒီခလုတ်ကနေ download လုပ်နိုင်ပါတယ်။</p>
+</body></html>`);
+});
+
 app.get("/api/config", (_req, res) => {
   res.json({
     ok: true,
