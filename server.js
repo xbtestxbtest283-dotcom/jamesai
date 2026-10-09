@@ -173,14 +173,16 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, "public"), {
+app.get("/download", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "download.html"));
+});
   setHeaders: (res, filePath) => {
     // Do not let browsers/CDNs keep an old app shell after a Render deploy.
     if (/\\.(html|js|css)$/.test(filePath)) {
       res.setHeader("Cache-Control", "no-store, max-age=0");
     }
   }
-}));
+
 
 // OAuth popup callback route: this MUST be a minimal callback page.
 // Do not load the full James AI app here; otherwise the callback popup
