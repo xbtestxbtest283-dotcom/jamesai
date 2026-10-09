@@ -31,7 +31,6 @@
         <button class="nav-item" data-view="images"><span>🖼️</span> Photo Studio</button>
         <button class="nav-item" data-view="history"><span>🕘</span> History</button>
         <button class="nav-item" data-view="plans"><span>⭐</span> Plans & Purchase</button>
-        <button class="nav-item apk-download-btn" type="button"><span>📱</span> Download APK</button>
 
         <div class="menu-label">TOOLS</div>
         <button class="nav-item" data-prompt="Help me with programming or code."><span>💻</span> Programming</button>
@@ -133,7 +132,6 @@
           <div class="settings-card">
             <div class="setting-row"><div><strong>AI model</strong><p>Server-side environment variable နဲ့ သတ်မှတ်ထားပါတယ်။</p></div><span class="status-pill">API</span></div>
             <div class="setting-row"><div><strong>Attachments</strong><p>Photo, PDF, TXT, CSV, Markdown, JSON နဲ့ Office files တွေကို chat ထဲကနေ ပို့နိုင်ပါတယ်။</p></div><span class="status-pill">ON</span></div>
-            <div class="setting-row"><div><strong>Android App</strong><p>James AI Android APK ကို download လုပ်ပြီး install လုပ်နိုင်ပါတယ်။</p></div><button id="settingsDownloadApkBtn" class="primary-btn" type="button">📱 Download APK</button></div>
             <div class="setting-row"><div><strong>Clear local history</strong><p>ဒီ browser ထဲက သိမ်းထားတဲ့ chat history ကိုဖျက်မယ်။</p></div><button id="clearHistoryBtn" class="danger-btn">Clear</button></div>
           </div>
         </section>
@@ -163,5 +161,24 @@
   <div id="toast" class="toast hidden"></div>
   <script src="script.js"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
+<div id="apkDownloadFooter" style="text-align:center; padding:20px;">
+  <a href="/download-apk"
+     style="display:inline-block; background:#7c3aed; color:white; padding:14px 24px; border-radius:12px; text-decoration:none; font-weight:bold;">
+    ⬇ Download James AI APK
+  </a>
+</div>
+<script>
+  // Keep the download button on the website, but hide it inside the Android app/WebView.
+  (function () {
+    var ua = navigator.userAgent || "";
+    var isCapacitorApp = /Capacitor/i.test(ua) ||
+      !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    var isAndroidWebView = /Android/i.test(ua) && (/;\s*wv\)/i.test(ua) || /Version\/4\.0/i.test(ua));
+    if (isCapacitorApp || isAndroidWebView) {
+      var footer = document.getElementById("apkDownloadFooter");
+      if (footer) footer.remove();
+    }
+  })();
+</script>
 </body>
 </html>
