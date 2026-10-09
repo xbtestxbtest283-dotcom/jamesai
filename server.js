@@ -173,16 +173,22 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/download", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "download.html"));
-});
+// Serve the complete frontend (HTML, CSS, JavaScript, icons and PWA assets).
+app.use(express.static(path.join(__dirname, "public"), {
   setHeaders: (res, filePath) => {
-    // Do not let browsers/CDNs keep an old app shell after a Render deploy.
-    if (/\\.(html|js|css)$/.test(filePath)) {
+    if (/\.(html|js|css|webmanifest)$/.test(filePath)) {
       res.setHeader("Cache-Control", "no-store, max-age=0");
     }
   }
+}));
 
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get("/download", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "download.html"));
+});
 
 // OAuth popup callback route: this MUST be a minimal callback page.
 // Do not load the full James AI app here; otherwise the callback popup
@@ -279,20 +285,17 @@ async function requireGoogleLogin(req, res, next) {
 // Stable APK download endpoint. If a built APK is bundled locally, serve it.
 // Otherwise redirect to the configured release/download URL.
 app.get("/download-apk", (_req, res) => {
-  const localApk = path.join(__dirname, "public", "downloads", "jamesai.apk");
-  if (fs.existsSync(localApk)) {
-    return res.download(localApk, "James AI.apk");
+  const candidates = [
+    path.join(__dirname, "public", "james-ai.apk"),
+    path.join(__dirname, "James_AI-successful.apk"),
+    path.join(__dirname, "public", "downloads", "jamesai.apk")
+  ];
+  const apkPath = candidates.find(candidate => fs.existsSync(candidate));
+  if (!apkPath) {
+    return res.status(404).type("text").send("James AI APK ဖိုင် မတွေ့ပါ။");
   }
-
-  const configuredUrl = String(process.env.APK_DOWNLOAD_URL || "").trim();
-  if (configuredUrl) return res.redirect(configuredUrl);
-
-  return res.status(404).type("html").send(`<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>James AI APK</title></head>
-<body style="font-family:system-ui,sans-serif;background:#0b0d12;color:#fff;padding:32px;text-align:center">
-<h2>James AI APK မရသေးပါ</h2>
-<p>GitHub Actions မှာ <b>Build James AI Android APK</b> workflow ကို Run လုပ်ပြီး APK build ပြီးမှ ဒီခလုတ်ကနေ download လုပ်နိုင်ပါတယ်။</p>
-</body></html>`);
+  res.setHeader("Cache-Control", "no-store");
+  return res.download(apkPath, "James-AI.apk");
 });
 
 app.get("/api/config", (_req, res) => {
