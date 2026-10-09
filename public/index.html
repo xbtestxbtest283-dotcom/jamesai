@@ -161,11 +161,46 @@
   <div id="toast" class="toast hidden"></div>
   <script src="script.js"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
-<div style="text-align:center; padding:20px;">
-  <a href="/james-ai.apk" download="james-ai.apk"
+<div id="apkDownloadFooter" style="text-align:center; padding:20px;">
+  <a href="/download-apk"
      style="display:inline-block; background:#7c3aed; color:white; padding:14px 24px; border-radius:12px; text-decoration:none; font-weight:bold;">
     ⬇ Download James AI APK
   </a>
 </div>
+<script>
+  (function () {
+  function hideNativeApkDownloadControls() {
+    var ua = navigator.userAgent || "";
+    var cap = window.Capacitor;
+    var isNativeApp =
+      /Capacitor/i.test(ua) ||
+      !!(cap && typeof cap.isNativePlatform === "function" &&
+         cap.isNativePlatform());
+
+    if (!isNativeApp) return;
+
+    var ids = ["apkDownloadFooter", "settingsDownloadApkBtn"];
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.remove();
+    });
+
+    document.querySelectorAll(
+      ".apk-download-btn, a[href*='download-apk'], a[href*='james-ai.apk']"
+    ).forEach(function (el) {
+      el.remove();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      hideNativeApkDownloadControls
+    );
+  } else {
+    hideNativeApkDownloadControls();
+  }
+})();
+</script>
 </body>
 </html>
