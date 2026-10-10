@@ -437,32 +437,35 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
 
     const user = makeUser(req.googleUser);
     if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
-    if (!message) {
+    const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
+    const imageAttachments = attachments.filter(a =>
+      a && typeof a.data === "string" && /^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(a.data)
+    ).slice(0, 6);
+
+    if (!message && imageAttachments.length === 0) {
       return res.status(400).json({
         ok: false,
-        error: "Message is required."
+        error: "စာရေးပါ သို့မဟုတ် ပုံတစ်ပုံ တင်ပေးပါ။"
       });
+    }
+
+    const content = [];
+    content.push({ type: "input_text", text: message || "ဒီပုံကို သေချာကြည့်ပြီး ဘာတွေပါသလဲ၊ အသုံးဝင်တဲ့အချက်အလက်တွေကို မြန်မာလို ရှင်းပြပေးပါ။" });
+    for (const attachment of imageAttachments) {
+      content.push({ type: "input_image", image_url: attachment.data, detail: "auto" });
     }
 
     const response = await client.responses.create({
       model,
       instructions: `
-You are James AI.
+You are James AI, a helpful multimodal assistant.
 
-Answer naturally and accurately.
-If the user writes Burmese, answer in natural Burmese.
-If English, answer in English.
+Answer naturally and accurately. If the user writes Burmese, answer in natural Burmese; if English, answer in English.
+When images are attached, inspect the image carefully and answer questions about visible objects, text, screenshots, diagrams, or documents. If text is blurry or unreadable, say so instead of guessing. Do not claim to see details that are not visible.
 
-Help with:
-- General questions
-- Programming
-- Study
-- Translation
-- Writing
-- Math
-- Explanations
+Help with general questions, image understanding, programming, study, translation, writing, math, and explanations.
 `,
-      input: message
+      input: [{ role: "user", content }]
     });
 
     const reply = String(response.output_text || "").trim();
