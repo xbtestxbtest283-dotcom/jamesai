@@ -122,9 +122,9 @@ For phone use, the most reliable path is to open the deployed HTTPS James AI URL
 The project now has server-enforced plans:
 
 - Free — 30 messages + 3 AI images. When either quota is reached, the free quota resets 24 hours after the limit was reached.
-- Plus 7 Days — 50 messages + 5 AI images for 7 days.
-- Plus 15 Days — 50 messages + 5 AI images for 15 days.
-- Plus Pro — 30 days with configurable "Limited" quotas (`PRO_MESSAGE_LIMIT` / `PRO_IMAGE_LIMIT`, defaults 500 / 50).
+- Plus 7 Days — 50 messages + 5 AI images per 24-hour quota window, for 7 days total.
+- Plus 15 Days — 50 messages + 5 AI images per 24-hour quota window, for 15 days total.
+- Plus Pro — 30 days with configurable daily quotas (`PRO_MESSAGE_LIMIT` / `PRO_IMAGE_LIMIT`, defaults 500 / 50); quota refills every 24 hours.
 
 Plan prices are controlled by `PLAN_PLUS7_PRICE`, `PLAN_PLUS15_PRICE`, and `PLAN_PRO30_PRICE`.
 

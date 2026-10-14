@@ -74,6 +74,7 @@ function saveUsers() {
   return writeQueue;
 }
 function nowMs() { return Date.now(); }
+const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 function makeUser(user) {
   const existing = users[user.sub] || {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
@@ -82,11 +83,22 @@ function makeUser(user) {
     pendingPurchase: null
   };
   existing.email = user.email; existing.name = user.name; existing.picture = user.picture;
-  if (existing.plan !== "free" && existing.planExpiresAt && nowMs() >= existing.planExpiresAt) {
+  const now = nowMs();
+  if (existing.plan !== "free" && existing.planExpiresAt && now >= existing.planExpiresAt) {
+    // Paid plan has ended: return to Free and reset all paid-plan counters.
     existing.plan = "free"; existing.planStartedAt = null; existing.planExpiresAt = null;
-    existing.messageCount = 0; existing.imageCount = 0; existing.windowStartedAt = null;
+    existing.messageCount = 0; existing.imageCount = 0; existing.windowStartedAt = null; existing.freeResetAt = null;
   }
-  if (existing.plan === "free" && existing.freeResetAt && nowMs() >= existing.freeResetAt) {
+  if (existing.plan !== "free") {
+    // Paid plans get a fresh message/image quota every 24 hours while the plan is active.
+    if (!existing.windowStartedAt) existing.windowStartedAt = Number(existing.planStartedAt || now);
+    if (now >= Number(existing.windowStartedAt) + QUOTA_WINDOW_MS) {
+      const elapsedWindows = Math.floor((now - Number(existing.windowStartedAt)) / QUOTA_WINDOW_MS);
+      existing.windowStartedAt = Number(existing.windowStartedAt) + elapsedWindows * QUOTA_WINDOW_MS;
+      existing.messageCount = 0;
+      existing.imageCount = 0;
+    }
+  } else if (existing.freeResetAt && now >= existing.freeResetAt) {
     existing.messageCount = 0; existing.imageCount = 0; existing.windowStartedAt = null; existing.freeResetAt = null;
   }
   users[user.sub] = existing;
@@ -94,7 +106,7 @@ function makeUser(user) {
 }
 function publicPlan(u) {
   const p = PLANS[u.plan] || PLANS.free;
-  const resetAt = u.plan === "free" ? u.freeResetAt : u.planExpiresAt;
+  const resetAt = u.plan === "free" ? u.freeResetAt : (Number(u.windowStartedAt || u.planStartedAt || nowMs()) + QUOTA_WINDOW_MS);
   return {
     id: p.id, name: p.name, messagesLimit: p.messages, imagesLimit: p.images,
     messagesUsed: u.messageCount, imagesUsed: u.imageCount,
@@ -130,6 +142,7 @@ function checkQuota(user, kind) {
 }
 function touchUsageWindow(user) {
   if (user.plan === "free" && !user.windowStartedAt) user.windowStartedAt = nowMs();
+  if (user.plan !== "free" && !user.windowStartedAt) user.windowStartedAt = Number(user.planStartedAt || nowMs());
 }
 function incrementUsage(user, kind) {
   touchUsageWindow(user);
@@ -137,7 +150,7 @@ function incrementUsage(user, kind) {
   else user.messageCount += 1;
   const p = PLANS[user.plan] || PLANS.free;
   if (user.plan === "free" && (user.messageCount >= p.messages || user.imageCount >= p.images)) {
-    user.freeResetAt = nowMs() + 24*60*60*1000;
+    user.freeResetAt = nowMs() + QUOTA_WINDOW_MS;
   }
 }
 function paymentInfoFor(planId, user) {
@@ -414,7 +427,7 @@ app.post("/api/admin/activate", async (req, res) => {
   user.planExpiresAt = start + PLANS[planId].durationDays * 24*60*60*1000;
   user.messageCount = 0;
   user.imageCount = 0;
-  user.windowStartedAt = null;
+  user.windowStartedAt = start;
   user.freeResetAt = null;
   user.pendingPurchase = null;
   await saveUsers();

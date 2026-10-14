@@ -591,7 +591,7 @@ function renderPlans(plans) {
       <div class="plan-badge">${current ? "CURRENT" : paid ? "UPGRADE" : "DEFAULT"}</div>
       <h3>${escapeHtml(p.name)}</h3>
       <div class="plan-price">${escapeHtml(p.price)}</div>
-      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages</li><li>${p.images >= 50 ? "Limited" : p.images} Images</li><li>${p.durationDays ? `${p.durationDays} Days` : "24-hour rolling quota"}</li></ul>
+      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages / 24 hours</li><li>${p.images >= 50 ? "Limited" : p.images} Images / 24 hours</li><li>${p.durationDays ? `${p.durationDays} Days active` : "Quota refreshes 24 hours after reaching the limit"}</li></ul>
       ${paid ? `<button class="primary-btn plan-buy-btn" data-plan="${p.id}" type="button">${p.paymentUrl ? "Buy / Pay" : "Setup Payment"}</button>` : `<button class="secondary-btn" type="button" disabled>Free Plan</button>`}
     </div>`;
   }).join("");
