@@ -377,7 +377,7 @@ app.post("/api/purchase/submit", requireGoogleLogin, async (req, res) => {
 });
 
 app.get("/api/admin/orders", async (req, res) => {
-  const secret = String(req.headers["x-admin-secret"] || "");
+  const secret = String(req.headers["x-admin-secret"] || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const orders = Object.values(users).filter(u => u.pendingPurchase).map(u => ({
     sub:u.sub,email:u.email,name:u.name, ...u.pendingPurchase
@@ -386,7 +386,7 @@ app.get("/api/admin/orders", async (req, res) => {
 });
 
 app.post("/api/admin/reject", async (req, res) => {
-  const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "");
+  const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const sub = String(req.body?.sub || "").trim();
   const user = users[sub];
@@ -398,7 +398,7 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 app.post("/api/admin/activate", async (req, res) => {
-  const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "");
+  const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) {
     return res.status(403).json({ok:false,error:"Admin authorization failed."});
   }
@@ -437,35 +437,32 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
 
     const user = makeUser(req.googleUser);
     if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
-    const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
-    const imageAttachments = attachments.filter(a =>
-      a && typeof a.data === "string" && /^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(a.data)
-    ).slice(0, 6);
-
-    if (!message && imageAttachments.length === 0) {
+    if (!message) {
       return res.status(400).json({
         ok: false,
-        error: "စာရေးပါ သို့မဟုတ် ပုံတစ်ပုံ တင်ပေးပါ။"
+        error: "Message is required."
       });
-    }
-
-    const content = [];
-    content.push({ type: "input_text", text: message || "ဒီပုံကို သေချာကြည့်ပြီး ဘာတွေပါသလဲ၊ အသုံးဝင်တဲ့အချက်အလက်တွေကို မြန်မာလို ရှင်းပြပေးပါ။" });
-    for (const attachment of imageAttachments) {
-      content.push({ type: "input_image", image_url: attachment.data, detail: "auto" });
     }
 
     const response = await client.responses.create({
       model,
       instructions: `
-You are James AI, a helpful multimodal assistant.
+You are James AI.
 
-Answer naturally and accurately. If the user writes Burmese, answer in natural Burmese; if English, answer in English.
-When images are attached, inspect the image carefully and answer questions about visible objects, text, screenshots, diagrams, or documents. If text is blurry or unreadable, say so instead of guessing. Do not claim to see details that are not visible.
+Answer naturally and accurately.
+If the user writes Burmese, answer in natural Burmese.
+If English, answer in English.
 
-Help with general questions, image understanding, programming, study, translation, writing, math, and explanations.
+Help with:
+- General questions
+- Programming
+- Study
+- Translation
+- Writing
+- Math
+- Explanations
 `,
-      input: [{ role: "user", content }]
+      input: message
     });
 
     const reply = String(response.output_text || "").trim();
