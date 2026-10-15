@@ -36,7 +36,7 @@ const frontendOrigin = String(process.env.FRONTEND_ORIGIN || "").trim().replace(
 // Set DATA_DIR to a persistent mount path on your hosting provider, for example
 // /var/data on Render after attaching a persistent disk. Without this variable,
 // local development uses the project's ./data folder.
-const DATA_DIR = path.resolve(String(process.env.DATA_DIR || path.join(__dirname, "data")));
+const DATA_DIR = path.join(__dirname, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const BUNDLED_USERS_FILE = path.join(__dirname, "data", "users.json");
 fs.mkdirSync(DATA_DIR, { recursive: true });
