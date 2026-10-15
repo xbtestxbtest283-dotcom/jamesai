@@ -33,8 +33,12 @@ const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
 const googleClientId = String(process.env.GOOGLE_CLIENT_ID || "").trim().replace(/^["\']|["\']$/g, "");
 const frontendOrigin = String(process.env.FRONTEND_ORIGIN || "").trim().replace(/\/$/, "");
 
-const DATA_DIR = path.join(__dirname, "data");
+// Set DATA_DIR to a persistent mount path on your hosting provider, for example
+// /var/data on Render after attaching a persistent disk. Without this variable,
+// local development uses the project's ./data folder.
+const DATA_DIR = path.resolve(String(process.env.DATA_DIR || path.join(__dirname, "data")));
 const USERS_FILE = path.join(DATA_DIR, "users.json");
+const BUNDLED_USERS_FILE = path.join(__dirname, "data", "users.json");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const PLANS = {
@@ -60,9 +64,26 @@ const ADMIN_PAYMENT_SECRET = String(process.env.ADMIN_PAYMENT_SECRET || "").trim
 
 let users = {};
 try {
+  // Prefer the persistent store. If it is new/empty, migrate the bundled data
+  // once so existing account plans are not discarded on first deployment.
   users = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
 } catch {
-  users = {};
+  try {
+    users = JSON.parse(fs.readFileSync(BUNDLED_USERS_FILE, "utf8"));
+  } catch {
+    users = {};
+  }
+  if (process.env.DATA_DIR) {
+    try {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
+      console.log(`User records initialized at persistent path: ${USERS_FILE}`);
+    } catch (err) {
+      console.error("Could not initialize persistent user store:", err.message);
+    }
+  }
+}
+if (process.env.NODE_ENV === "production" && !process.env.DATA_DIR) {
+  console.warn("WARNING: DATA_DIR is not set. User plans may be lost on redeploy/restart on ephemeral hosting.");
 }
 let writeQueue = Promise.resolve();
 function saveUsers() {
@@ -327,13 +348,21 @@ app.post("/api/auth/google", async (req, res) => {
     });
   }
 
+  // Resolve the Google identity to the existing server-side account by stable Google sub.
+  // This preserves the stored plan and quota instead of creating a client-only account.
+  const appUser = makeUser(user);
+  await saveUsers();
+
   res.json({
     ok: true,
     user: {
-      name: user.name,
-      email: user.email,
-      picture: user.picture
-    }
+      sub: appUser.sub,
+      name: appUser.name,
+      email: appUser.email,
+      picture: appUser.picture
+    },
+    plan: publicPlan(appUser),
+    pendingPurchase: appUser.pendingPurchase || null
   });
 });
 

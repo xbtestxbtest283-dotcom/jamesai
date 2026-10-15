@@ -1,0 +1,14 @@
+James AI — persistent-storage-ready patch
+=========================================
+
+Changes:
+- `server.js` now supports `DATA_DIR` so the user store can be placed on a persistent mounted volume.
+- If a new persistent path has no users.json, existing bundled data/users.json is copied there on startup.
+- Production startup logs a warning when DATA_DIR is not configured.
+- `RENDER_DEPLOY.md` explains the required Render disk setup and warns that Render Free filesystem storage is ephemeral.
+
+Important:
+- Code cannot make an ephemeral filesystem persistent by itself.
+- On Render, attach a disk on a plan that supports it, set DATA_DIR=/var/data, and back up existing live user records before changing paths.
+- If the live server has newer plan records than the uploaded ZIP, preserve those records and copy the live users.json to the disk; do not overwrite it with the bundled copy.
+- This patch does not include secrets. Set environment variables in the hosting dashboard.
