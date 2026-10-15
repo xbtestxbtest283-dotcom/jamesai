@@ -39,8 +39,10 @@ const frontendOrigin = String(process.env.FRONTEND_ORIGIN || "").trim().replace(
 const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.join(__dirname, "data");
+
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const BUNDLED_USERS_FILE = path.join(__dirname, "data", "users.json");
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const PLANS = {
