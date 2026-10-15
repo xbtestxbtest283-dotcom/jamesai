@@ -36,7 +36,9 @@ const frontendOrigin = String(process.env.FRONTEND_ORIGIN || "").trim().replace(
 // Set DATA_DIR to a persistent mount path on your hosting provider, for example
 // /var/data on Render after attaching a persistent disk. Without this variable,
 // local development uses the project's ./data folder.
-const DATA_DIR = path.join(__dirname, "data");
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const BUNDLED_USERS_FILE = path.join(__dirname, "data", "users.json");
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -588,21 +590,6 @@ app.post("/api/images", requireGoogleLogin, async (req, res) => {
       error: String(error?.message || "Image error")
     });
   }
-});
-app.get('/download-apk', (req, res) => {
-  const apkPath = path.join(__dirname, 'James_AI-successful.apk');
-
-  if (!fs.existsSync(apkPath)) {
-    return res.status(404).send('APK file not found.');
-  }
-
-  res.download(apkPath, 'James_AI-successful.apk');
-});
-app.get('/download-apk', (req, res) => {
-  res.download(
-    require('path').join(__dirname, 'James_AI-successful.apk'),
-    'James_AI-successful.apk'
-  );
 });
 
 const server = app.listen(PORT, "0.0.0.0", () => {
