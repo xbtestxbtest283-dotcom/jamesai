@@ -14,7 +14,7 @@ dotenv.config({
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
@@ -476,62 +476,59 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
       });
     }
 
-    const message =
-      typeof req.body?.message === "string"
-        ? req.body.message.trim()
-        : "";
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
+    const images = attachments.filter((a) => a && typeof a.type === "string" &&
+      a.type.startsWith("image/") && typeof a.data === "string" &&
+      /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(a.data)).slice(0, 6);
+
+    if (!message && images.length === 0) {
+      return res.status(400).json({ ok: false, error: "စာမေးခွန်း သို့မဟုတ် ပုံတစ်ပုံ တင်ပေးပါ။" });
+    }
 
     const user = makeUser(req.googleUser);
     if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
-    if (!message) {
-      return res.status(400).json({
-        ok: false,
-        error: "Message is required."
-      });
+
+    // Pass recent conversation context, then attach images as vision inputs.
+    const priorHistory = Array.isArray(req.body?.history) ? req.body.history : [];
+    const input = priorHistory
+      .filter((item) => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string")
+      .slice(-12)
+      .map((item) => ({ role: item.role, content: item.content }));
+
+    const content = [];
+    if (message) {
+      content.push({ type: "input_text", text: message });
+    } else {
+      content.push({ type: "input_text", text: "ဤပုံကို စစ်ဆေးပြီး မြင်ရသောစာသားများ၊ အရာဝတ္ထုများနှင့် အရေးကြီးသောအသေးစိတ်အချက်များကို ရှင်းပြပါ။" });
     }
+    for (const image of images) {
+      content.push({ type: "input_image", image_url: image.data, detail: "high" });
+    }
+    input.push({ role: "user", content });
 
     const response = await client.responses.create({
       model,
       instructions: `
-You are James AI.
-
-Answer naturally and accurately.
-If the user writes Burmese, answer in natural Burmese.
-If English, answer in English.
-
-Help with:
-- General questions
-- Programming
-- Study
-- Translation
-- Writing
-- Math
-- Explanations
+You are James AI, a helpful multimodal assistant.
+Answer naturally and accurately. If the user writes Burmese, answer in natural Burmese; if English, answer in English.
+You can analyze images supplied with the user's message. Read visible text carefully (including Burmese when legible), describe objects and scenes, and answer questions grounded in the image.
+If text or details are unclear, say so rather than inventing them. Distinguish what is visible from what you infer.
+Help with general questions, programming, study, translation, writing, math, explanations, OCR, and image understanding.
 `,
-      input: message
+      input
     });
 
     const reply = String(response.output_text || "").trim();
-
     if (!reply) {
-      return res.status(502).json({
-        ok: false,
-        error: "AI က အဖြေမပြန်လာပါ။"
-      });
+      return res.status(502).json({ ok: false, error: "AI က အဖြေမပြန်လာပါ။" });
     }
 
     incrementUsage(user, "message");
     await saveUsers();
-    res.json({
-      ok: true,
-      name: "James AI",
-      reply,
-      usage: publicPlan(user)
-    });
-
+    res.json({ ok: true, name: "James AI", reply, usage: publicPlan(user) });
   } catch (error) {
     console.error("CHAT ERROR:", error);
-
     res.status(Number(error?.status || 500)).json({
       ok: false,
       error: String(error?.message || "Server error")

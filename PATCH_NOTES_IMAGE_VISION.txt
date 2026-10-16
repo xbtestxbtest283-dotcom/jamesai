@@ -1,0 +1,14 @@
+James AI image understanding patch
+
+Changes:
+- /api/chat now sends uploaded image data URLs to the OpenAI Responses API as input_image content.
+- Supports image-only messages (the user does not need to type a question).
+- Includes recent user/assistant text history as context.
+- Increases Express JSON request limit to 50 MB for image attachments.
+- Adds instructions for OCR, image description, and answering questions based on visible image content.
+- Server syntax checked with `node --check server.js`.
+
+Deployment notes:
+- Keep OPENAI_API_KEY only in the server environment (.env locally or Render environment variables).
+- The configured OPENAI_MODEL must support image inputs. Use a vision-capable model such as gpt-4o-mini.
+- The prebuilt Android APK in this archive has not been rebuilt; redeploy the web app first, then rebuild APK if needed.
