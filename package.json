@@ -11,6 +11,7 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "openai": "^5.20.0"
