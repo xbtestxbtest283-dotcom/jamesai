@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,38 +67,99 @@ const WAVE_PAY_PHONE = String(process.env.WAVE_PAY_PHONE || "").trim();
 const WAVE_PAY_NAME = String(process.env.WAVE_PAY_NAME || "").trim();
 const ADMIN_PAYMENT_SECRET = String(process.env.ADMIN_PAYMENT_SECRET || "").trim();
 
+const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+const supabaseKey = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const supabase = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  : null;
+const SUPABASE_USERS_TABLE = "jamesai_user_data";
+
 let users = {};
-try {
-  // Prefer the persistent store. If it is new/empty, migrate the bundled data
-  // once so existing account plans are not discarded on first deployment.
-  users = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
-} catch {
-  try {
-    users = JSON.parse(fs.readFileSync(BUNDLED_USERS_FILE, "utf8"));
-  } catch {
-    users = {};
-  }
-  if (process.env.DATA_DIR) {
+let writeQueue = Promise.resolve();
+
+function readLocalUsers() {
+  for (const file of [USERS_FILE, BUNDLED_USERS_FILE]) {
     try {
-      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
-      console.log(`User records initialized at persistent path: ${USERS_FILE}`);
-    } catch (err) {
-      console.error("Could not initialize persistent user store:", err.message);
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch { /* try next local source */ }
+  }
+  return {};
+}
+
+async function initializeUserStore() {
+  const localUsers = readLocalUsers();
+
+  if (!supabase) {
+    users = localUsers;
+    if (process.env.NODE_ENV === "production") {
+      console.warn("WARNING: Supabase user storage is not configured; using local users.json.");
+    }
+    return;
+  }
+
+  // Read cloud data first. If this fails, stop startup rather than accidentally
+  // running with an empty local store and overwriting valid cloud records.
+  const { data: rows, error } = await supabase
+    .from(SUPABASE_USERS_TABLE)
+    .select("google_sub,email,user_data");
+  if (error) throw new Error(`Supabase read failed: ${error.message}`);
+
+  const cloudUsers = {};
+  for (const row of rows || []) {
+    if (row.google_sub && row.user_data && typeof row.user_data === "object") {
+      cloudUsers[row.google_sub] = row.user_data;
     }
   }
+
+  // Keep local records as a recovery/migration source; cloud version wins when
+  // the same account exists in both places. Never delete the original JSON file.
+  users = { ...localUsers, ...cloudUsers };
+
+  // Upload local-only records and refresh cloud copies without changing plan/quota fields.
+  const records = Object.entries(users).map(([sub, data]) => ({
+    google_sub: sub,
+    email: String(data?.email || ""),
+    user_data: data,
+    updated_at: new Date().toISOString()
+  }));
+  for (let i = 0; i < records.length; i += 100) {
+    const { error: upsertError } = await supabase
+      .from(SUPABASE_USERS_TABLE)
+      .upsert(records.slice(i, i + 100), { onConflict: "google_sub" });
+    if (upsertError) throw new Error(`Supabase migration failed: ${upsertError.message}`);
+  }
+
+  // Keep a local backup copy too. It is not the primary store when Supabase is enabled.
+  await fs.promises.writeFile(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
+  console.log(`Supabase user store ready: ${Object.keys(users).length} user record(s) loaded.`);
 }
-if (process.env.NODE_ENV === "production" && !process.env.DATA_DIR) {
-  console.warn("WARNING: DATA_DIR is not set. User plans may be lost on redeploy/restart on ephemeral hosting.");
-}
-let writeQueue = Promise.resolve();
+
 function saveUsers() {
   writeQueue = writeQueue.then(async () => {
+    // Always update the local recovery copy first.
     const tmp = `${USERS_FILE}.tmp`;
     await fs.promises.writeFile(tmp, JSON.stringify(users, null, 2), "utf8");
     await fs.promises.rename(tmp, USERS_FILE);
+
+    if (supabase) {
+      const records = Object.entries(users).map(([sub, data]) => ({
+        google_sub: sub,
+        email: String(data?.email || ""),
+        user_data: data,
+        updated_at: new Date().toISOString()
+      }));
+      for (let i = 0; i < records.length; i += 100) {
+        const { error } = await supabase
+          .from(SUPABASE_USERS_TABLE)
+          .upsert(records.slice(i, i + 100), { onConflict: "google_sub" });
+        if (error) throw new Error(error.message);
+      }
+    }
   }).catch(err => console.error("USER STORE ERROR:", err));
   return writeQueue;
 }
+
 function nowMs() { return Date.now(); }
 const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 function makeUser(user) {
@@ -591,22 +653,28 @@ app.post("/api/images", requireGoogleLogin, async (req, res) => {
   }
 });
 
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log("");
-  console.log("=================================");
-  console.log("       JAMES AI SERVER");
-  console.log("=================================");
-  console.log(`URL: http://localhost:${PORT}`);
-  console.log(`OpenAI: ${client ? "configured" : "MISSING"}`);
-  console.log(`Pollinations Image: ${pollinationsApiKey ? `configured (${pollinationsImageModel})` : "MISSING API KEY"}`);
-  console.log(`Google Login: ${googleClientId ? "configured" : "MISSING GOOGLE_CLIENT_ID"}`);
-  console.log(`Model: ${model}`);
-  console.log("=================================");
-  console.log("");
-});
+async function startServer() {
+  await initializeUserStore();
+  const server = app.listen(PORT, HOST, () => {
+    console.log("");
+    console.log("=================================");
+    console.log("       JAMES AI SERVER");
+    console.log("=================================");
+    console.log(`URL: http://localhost:${PORT}`);
+    console.log(`OpenAI: ${client ? "configured" : "MISSING"}`);
+    console.log(`Pollinations Image: ${pollinationsApiKey ? `configured (${pollinationsImageModel})` : "MISSING API KEY"}`);
+    console.log(`Google Login: ${googleClientId ? "configured" : "MISSING GOOGLE_CLIENT_ID"}`);
+    console.log(`Supabase User Store: ${supabase ? "configured" : "disabled (local JSON)"}`);
+    console.log(`Model: ${model}`);
+    console.log("=================================");
+    console.log("");
+  });
+  server.on("error", (error) => console.error("SERVER ERROR:", error));
+}
 
-server.on("error", (error) => {
-  console.error("SERVER ERROR:", error);
+startServer().catch(error => {
+  console.error("STARTUP FAILED:", error.message);
+  process.exitCode = 1;
 });
 
 process.on("uncaughtException", (error) => {

@@ -1,0 +1,22 @@
+James AI - Supabase update
+
+Contents:
+- server.js: updated server file
+
+Before deploying:
+1. Back up your current server.js and data/users.json.
+2. Ensure package.json uses ES modules ("type": "module").
+3. Install dependency in the project:
+   npm install @supabase/supabase-js
+4. In Render Environment, set:
+   SUPABASE_URL = your Supabase project URL
+   SUPABASE_SECRET_KEY = your Supabase secret key (server-side only)
+5. Confirm the public.jamesai_user_data table exists with columns:
+   google_sub TEXT PRIMARY KEY,
+   email TEXT,
+   user_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+6. Deploy and inspect Render logs. Test with a non-critical account before relying on it.
+
+Never commit .env files or expose SUPABASE_SECRET_KEY in frontend code or chat.
+Keep the original users.json backup until migration and plan/quota checks are complete.
