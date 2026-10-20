@@ -98,9 +98,11 @@ const sidebar = $("#sidebar");
 const mobileMenuBtn = $("#mobileMenuBtn");
 const fileInput = $("#fileInput");
 const chatPhotoInput = $("#photoInput");
-const cameraInput = $("#cameraInput");
 const attachBtn = $("#attachBtn");
 const attachMenu = $("#attachMenu");
+const cameraInput = $("#cameraInput");
+const photosInput = $("#photosInput");
+const documentsInput = $("#documentsInput");
 const attachmentPreview = $("#attachmentPreview");
 
 let history = JSON.parse(localStorage.getItem("jamesai_history") || "[]");
@@ -324,25 +326,33 @@ input.addEventListener("keydown", e => {
   }
 });
 
+function closeAttachMenu() {
+  attachMenu.classList.add("hidden");
+  attachBtn.setAttribute("aria-expanded", "false");
+}
 attachBtn.addEventListener("click", (event) => {
   event.stopPropagation();
-  attachMenu.classList.toggle("hidden");
+  const opening = attachMenu.classList.contains("hidden");
+  attachMenu.classList.toggle("hidden", !opening);
+  attachBtn.setAttribute("aria-expanded", String(opening));
 });
-attachMenu.querySelectorAll("[data-attach-action]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const action = button.dataset.attachAction;
-    attachMenu.classList.add("hidden");
-    if (action === "camera") cameraInput.click();
-    else if (action === "photos") chatPhotoInput.click();
-    else fileInput.click();
-  });
+attachMenu.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-attach]");
+  if (!option) return;
+  const target = { camera: cameraInput, photos: photosInput, files: documentsInput }[option.dataset.attach];
+  closeAttachMenu();
+  if (target) target.click();
 });
 document.addEventListener("click", (event) => {
-  if (!event.target.closest(".attach-wrap")) attachMenu.classList.add("hidden");
+  if (!event.target.closest(".attach-menu-wrap")) closeAttachMenu();
 });
 fileInput.addEventListener("change", () => handleFiles(fileInput.files));
-chatPhotoInput.addEventListener("change", () => handleFiles(chatPhotoInput.files));
-cameraInput.addEventListener("change", () => handleFiles(cameraInput.files));
+[cameraInput, photosInput, documentsInput].forEach((picker) => {
+  picker.addEventListener("change", () => {
+    if (picker.files?.length) handleFiles(picker.files);
+    picker.value = "";
+  });
+});
 
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
