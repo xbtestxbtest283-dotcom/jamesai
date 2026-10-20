@@ -353,7 +353,10 @@ fileInput.addEventListener("change", () => handleFiles(fileInput.files));
     picker.value = "";
   });
 });
-
+cameraInput.addEventListener("change", () => {
+  handleFiles(cameraInput.files);
+  cameraInput.value = "";
+});
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
   $(`#${view}View`)?.classList.add("active");
