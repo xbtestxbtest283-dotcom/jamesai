@@ -98,8 +98,9 @@ const sidebar = $("#sidebar");
 const mobileMenuBtn = $("#mobileMenuBtn");
 const fileInput = $("#fileInput");
 const attachBtn = $("#attachBtn");
-const cameraBtn = $("#cameraBtn");
 const cameraInput = $("#cameraInput");
+const chatPhotoInput = $("#photoInput");
+const attachMenu = $("#attachMenu");
 const attachmentPreview = $("#attachmentPreview");
 
 let history = JSON.parse(localStorage.getItem("jamesai_history") || "[]");
@@ -323,15 +324,14 @@ input.addEventListener("keydown", e => {
   }
 });
 
-attachBtn.addEventListener("click", () => fileInput.click());
+attachBtn.addEventListener("click", (e) => { e.preventDefault(); attachMenu.classList.toggle("hidden"); });
+document.addEventListener("click", (e) => { if (!e.target.closest(".attach-menu-wrap")) attachMenu.classList.add("hidden"); });
+$("#cameraOption").addEventListener("click", () => { attachMenu.classList.add("hidden"); cameraInput.click(); });
+$("#photosOption").addEventListener("click", () => { attachMenu.classList.add("hidden"); chatPhotoInput.click(); });
+$("#filesOption").addEventListener("click", () => { attachMenu.classList.add("hidden"); fileInput.click(); });
+cameraInput.addEventListener("change", () => { handleFiles(cameraInput.files); cameraInput.value = ""; });
+chatPhotoInput.addEventListener("change", () => { handleFiles(chatPhotoInput.files); chatPhotoInput.value = ""; });
 fileInput.addEventListener("change", () => handleFiles(fileInput.files));
-if (cameraBtn && cameraInput) {
-  cameraBtn.addEventListener("click", () => cameraInput.click());
-  cameraInput.addEventListener("change", async () => {
-    if (cameraInput.files?.length) await handleFiles(cameraInput.files);
-    cameraInput.value = "";
-  });
-}
 
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
@@ -808,3 +808,4 @@ window.addEventListener("load", () => {
 
 
 initAuthentication();
+
