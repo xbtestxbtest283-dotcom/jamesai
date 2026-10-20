@@ -97,9 +97,9 @@ const newChatBtn = $("#newChatBtn");
 const sidebar = $("#sidebar");
 const mobileMenuBtn = $("#mobileMenuBtn");
 const fileInput = $("#fileInput");
-const attachBtn = $("#attachBtn");
-const cameraInput = $("#cameraInput");
 const chatPhotoInput = $("#photoInput");
+const cameraInput = $("#cameraInput");
+const attachBtn = $("#attachBtn");
 const attachMenu = $("#attachMenu");
 const attachmentPreview = $("#attachmentPreview");
 
@@ -324,14 +324,25 @@ input.addEventListener("keydown", e => {
   }
 });
 
-attachBtn.addEventListener("click", (e) => { e.preventDefault(); attachMenu.classList.toggle("hidden"); });
-document.addEventListener("click", (e) => { if (!e.target.closest(".attach-menu-wrap")) attachMenu.classList.add("hidden"); });
-$("#cameraOption").addEventListener("click", () => { attachMenu.classList.add("hidden"); cameraInput.click(); });
-$("#photosOption").addEventListener("click", () => { attachMenu.classList.add("hidden"); chatPhotoInput.click(); });
-$("#filesOption").addEventListener("click", () => { attachMenu.classList.add("hidden"); fileInput.click(); });
-cameraInput.addEventListener("change", () => { handleFiles(cameraInput.files); cameraInput.value = ""; });
-chatPhotoInput.addEventListener("change", () => { handleFiles(chatPhotoInput.files); chatPhotoInput.value = ""; });
+attachBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  attachMenu.classList.toggle("hidden");
+});
+attachMenu.querySelectorAll("[data-attach-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const action = button.dataset.attachAction;
+    attachMenu.classList.add("hidden");
+    if (action === "camera") cameraInput.click();
+    else if (action === "photos") chatPhotoInput.click();
+    else fileInput.click();
+  });
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".attach-wrap")) attachMenu.classList.add("hidden");
+});
 fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+chatPhotoInput.addEventListener("change", () => handleFiles(chatPhotoInput.files));
+cameraInput.addEventListener("change", () => handleFiles(cameraInput.files));
 
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
@@ -808,4 +819,3 @@ window.addEventListener("load", () => {
 
 
 initAuthentication();
-
