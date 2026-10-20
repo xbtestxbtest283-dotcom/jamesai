@@ -98,6 +98,8 @@ const sidebar = $("#sidebar");
 const mobileMenuBtn = $("#mobileMenuBtn");
 const fileInput = $("#fileInput");
 const attachBtn = $("#attachBtn");
+const cameraBtn = $("#cameraBtn");
+const cameraInput = $("#cameraInput");
 const attachmentPreview = $("#attachmentPreview");
 
 let history = JSON.parse(localStorage.getItem("jamesai_history") || "[]");
@@ -323,6 +325,13 @@ input.addEventListener("keydown", e => {
 
 attachBtn.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+if (cameraBtn && cameraInput) {
+  cameraBtn.addEventListener("click", () => cameraInput.click());
+  cameraInput.addEventListener("change", async () => {
+    if (cameraInput.files?.length) await handleFiles(cameraInput.files);
+    cameraInput.value = "";
+  });
+}
 
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
