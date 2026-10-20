@@ -97,7 +97,12 @@ const newChatBtn = $("#newChatBtn");
 const sidebar = $("#sidebar");
 const mobileMenuBtn = $("#mobileMenuBtn");
 const fileInput = $("#fileInput");
+const chatPhotoInput = $("#photoInput");
 const attachBtn = $("#attachBtn");
+const attachMenu = $("#attachMenu");
+const cameraInput = $("#cameraInput");
+const photosInput = $("#photosInput");
+const documentsInput = $("#documentsInput");
 const attachmentPreview = $("#attachmentPreview");
 
 let history = JSON.parse(localStorage.getItem("jamesai_history") || "[]");
@@ -321,8 +326,33 @@ input.addEventListener("keydown", e => {
   }
 });
 
-attachBtn.addEventListener("click", () => fileInput.click());
+function closeAttachMenu() {
+  attachMenu.classList.add("hidden");
+  attachBtn.setAttribute("aria-expanded", "false");
+}
+attachBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const opening = attachMenu.classList.contains("hidden");
+  attachMenu.classList.toggle("hidden", !opening);
+  attachBtn.setAttribute("aria-expanded", String(opening));
+});
+attachMenu.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-attach]");
+  if (!option) return;
+  const target = { camera: cameraInput, photos: photosInput, files: documentsInput }[option.dataset.attach];
+  closeAttachMenu();
+  if (target) target.click();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".attach-menu-wrap")) closeAttachMenu();
+});
 fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+[cameraInput, photosInput, documentsInput].forEach((picker) => {
+  picker.addEventListener("change", () => {
+    if (picker.files?.length) handleFiles(picker.files);
+    picker.value = "";
+  });
+});
 
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
@@ -334,13 +364,6 @@ function openView(view) {
 }
 
 $$("[data-view]").forEach(b => b.addEventListener("click", () => openView(b.dataset.view)));
-
-function downloadApk() {
-  window.location.href = apiUrl("/download-apk");
-}
-
-$$(".apk-download-btn").forEach(b => b.addEventListener("click", downloadApk));
-$("#settingsDownloadApkBtn")?.addEventListener("click", downloadApk);
 $$("[data-prompt]").forEach(b => b.addEventListener("click", () => {
   const p = b.dataset.prompt || "";
   if (b.dataset.view) return;
@@ -591,7 +614,7 @@ function renderPlans(plans) {
       <div class="plan-badge">${current ? "CURRENT" : paid ? "UPGRADE" : "DEFAULT"}</div>
       <h3>${escapeHtml(p.name)}</h3>
       <div class="plan-price">${escapeHtml(p.price)}</div>
-      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages / 24 hours</li><li>${p.images >= 50 ? "Limited" : p.images} Images / 24 hours</li><li>${p.durationDays ? `${p.durationDays} Days active` : "Quota refreshes 24 hours after reaching the limit"}</li></ul>
+      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages</li><li>${p.images >= 50 ? "Limited" : p.images} Images</li><li>${p.durationDays ? `${p.durationDays} Days` : "24-hour rolling quota"}</li></ul>
       ${paid ? `<button class="primary-btn plan-buy-btn" data-plan="${p.id}" type="button">${p.paymentUrl ? "Buy / Pay" : "Setup Payment"}</button>` : `<button class="secondary-btn" type="button" disabled>Free Plan</button>`}
     </div>`;
   }).join("");
@@ -648,7 +671,35 @@ $("#generateImageBtn")?.addEventListener("click", async () => {
     currentUsage = data.usage || currentUsage; updateUsageUI();
     const result = $("#generatedImageResult");
     result.classList.remove("hidden");
-    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><a class="primary-btn" href="${data.image}" download="james-ai-generated.png">⬇ Download</a></div>`;
+    // Keep the generated data URL on the button and download it as a Blob.
+    // This is more reliable on Android browsers than downloading a data: URL directly.
+    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><button type="button" class="primary-btn" id="downloadGeneratedImageBtn">⬇ Download</button></div>`;
+    const downloadButton = $("#downloadGeneratedImageBtn");
+    downloadButton.addEventListener("click", () => {
+      try {
+        const match = String(data.image || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
+        if (!match) throw new Error("Generated image data is invalid.");
+        const mimeType = match[1];
+        const binary = atob(match[2]);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const ext = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
+        link.href = url;
+        link.download = `james-ai-generated.${ext}`;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast("ပုံ Download လုပ်ရန် စတင်လိုက်ပါပြီ။");
+      } catch (error) {
+        console.error("GENERATED IMAGE DOWNLOAD ERROR:", error);
+        toast("Download မရပါ။ ပုံကို ဖိထားပြီး Save image ကို စမ်းပါ။");
+      }
+    });
   } catch(e) { toast("⚠️ " + e.message); }
   finally { btn.disabled = false; btn.textContent = "✨ Generate Image"; }
 });
