@@ -641,7 +641,35 @@ $("#generateImageBtn")?.addEventListener("click", async () => {
     currentUsage = data.usage || currentUsage; updateUsageUI();
     const result = $("#generatedImageResult");
     result.classList.remove("hidden");
-    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><a class="primary-btn" href="${data.image}" download="james-ai-generated.png">⬇ Download</a></div>`;
+    // Keep the generated data URL on the button and download it as a Blob.
+    // This is more reliable on Android browsers than downloading a data: URL directly.
+    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><button type="button" class="primary-btn" id="downloadGeneratedImageBtn">⬇ Download</button></div>`;
+    const downloadButton = $("#downloadGeneratedImageBtn");
+    downloadButton.addEventListener("click", () => {
+      try {
+        const match = String(data.image || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
+        if (!match) throw new Error("Generated image data is invalid.");
+        const mimeType = match[1];
+        const binary = atob(match[2]);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const ext = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
+        link.href = url;
+        link.download = `james-ai-generated.${ext}`;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast("ပုံ Download လုပ်ရန် စတင်လိုက်ပါပြီ။");
+      } catch (error) {
+        console.error("GENERATED IMAGE DOWNLOAD ERROR:", error);
+        toast("Download မရပါ။ ပုံကို ဖိထားပြီး Save image ကို စမ်းပါ။");
+      }
+    });
   } catch(e) { toast("⚠️ " + e.message); }
   finally { btn.disabled = false; btn.textContent = "✨ Generate Image"; }
 });
