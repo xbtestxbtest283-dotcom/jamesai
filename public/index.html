@@ -67,8 +67,8 @@
           <form id="chatForm" class="composer">
             <input id="fileInput" type="file" hidden multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
             <input id="cameraInput" type="file" hidden accept="image/*" capture="environment">
-            <button type="button" id="attachBtn" class="attach-btn" title="Photo / File attach" aria-label="Attach photo or file">＋</button>
-            <button type="button" id="cameraBtn" class="attach-btn camera-btn" title="Take a photo" aria-label="Open camera">📷</button>
+            <input id="photoInput" type="file" hidden accept="image/*" multiple>
+            <div class="attach-menu-wrap"><button type="button" id="attachBtn" class="attach-btn" title="Attach" aria-label="Attach">＋</button><div id="attachMenu" class="attach-menu hidden"><button type="button" id="cameraOption"><span>📷</span> Camera</button><button type="button" id="photosOption"><span>🖼️</span> Photos</button><button type="button" id="filesOption"><span>📎</span> Files</button></div></div>
             <textarea id="messageInput" rows="1" placeholder="Message James AI..." autocomplete="off"></textarea>
             <button id="sendButton" class="send-btn" type="submit" aria-label="Send">➤</button>
           </form>
