@@ -333,37 +333,68 @@ async function openLiveCamera() {
 
   let stream = null;
   let facingMode = "environment";
+  let flashOn = false;
   let closed = false;
 
+  const svg = (paths) => `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const flashOnSvg = svg('<path d="M13 2 4.5 13h6L10 22l9.5-12h-6L13 2Z"/>');
+  const flashOffSvg = svg('<path d="M13 2 4.5 13h6L10 22l9.5-12h-6L13 2Z"/><path d="m3 3 18 18"/>');
+  const switchSvg = svg('<path d="M20 7h-5l2.5-2.5"/><path d="M4 17h5l-2.5 2.5"/><path d="M5 9a7 7 0 0 1 12-3l.5.5M19 15a7 7 0 0 1-12 3l-.5-.5"/>');
+  const closeSvg = svg('<path d="m18 6-12 12M6 6l12 12"/>');
   const modal = document.createElement("div");
-  modal.style.cssText = `position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;color:#fff;font-family:Arial,sans-serif;`;
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-label", "Camera");
+  modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:transparent;overflow:hidden;color:#fff;font-family:inherit;";
+
+  const preview = document.createElement("div");
+  preview.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:60vh;min-height:360px;max-height:calc(100dvh - 180px);overflow:hidden;border-radius:30px 30px 0 0;background:#000;";
   const video = document.createElement("video");
   video.autoplay = true;
   video.playsInline = true;
   video.muted = true;
-  video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;";
+  video.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;background:#000;";
 
-  const top = document.createElement("div");
-  top.style.cssText = "position:absolute;top:env(safe-area-inset-top,12px);left:0;right:0;display:flex;justify-content:flex-end;padding:18px;z-index:2;";
+  const buttonStyle = "position:absolute;display:flex;align-items:center;justify-content:center;width:58px;height:58px;border:0;border-radius:50%;background:rgba(30,30,30,.72);color:#fff;box-shadow:0 2px 8px #0002;padding:0;cursor:pointer; -webkit-tap-highlight-color:transparent;";
   const flash = document.createElement("button");
-  flash.textContent = "⚡̸";
-  flash.setAttribute("aria-label", "Flash is not available in this browser");
-  flash.title = "Flash ကို ဒီ browser မှာ မထိန်းချုပ်နိုင်ပါ";
-  flash.style.cssText = "width:50px;height:50px;border:0;border-radius:50%;background:#333b;color:#fff;font-size:25px;";
+  flash.type = "button";
+  flash.setAttribute("aria-label", "Flash off");
+  flash.title = "Flash";
+  flash.style.cssText = buttonStyle + "right:20px;top:calc(50% - 88px);";
+  flash.innerHTML = flashOffSvg;
 
-  const bottom = document.createElement("div");
-  bottom.style.cssText = "position:absolute;bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);left:0;right:0;display:flex;align-items:center;justify-content:space-around;z-index:2;padding:0 18px;";
-  const cancel = document.createElement("button");
-  cancel.textContent = "‹";
-  cancel.setAttribute("aria-label", "Back");
-  cancel.style.cssText = "width:58px;height:58px;border:0;border-radius:50%;background:#333b;color:#fff;font-size:42px;line-height:1;";
-  const take = document.createElement("button");
-  take.setAttribute("aria-label", "Take photo");
-  take.style.cssText = "width:82px;height:82px;border:7px solid #444;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #fff inset;";
   const switchCamera = document.createElement("button");
-  switchCamera.textContent = "⟳";
+  switchCamera.type = "button";
   switchCamera.setAttribute("aria-label", "Switch camera");
-  switchCamera.style.cssText = "width:58px;height:58px;border:0;border-radius:50%;background:#333b;color:#fff;font-size:38px;line-height:1;";
+  switchCamera.title = "Switch camera";
+  switchCamera.style.cssText = buttonStyle + "right:20px;top:calc(50% - 12px);";
+  switchCamera.innerHTML = switchSvg;
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.setAttribute("aria-label", "Close camera");
+  cancel.title = "Close camera";
+  cancel.style.cssText = buttonStyle + "right:20px;bottom:20px;";
+  cancel.innerHTML = closeSvg;
+
+  const back = document.createElement("button");
+  back.type = "button";
+  back.setAttribute("aria-label", "Back");
+  back.style.cssText = buttonStyle + "left:20px;bottom:20px;";
+  back.innerHTML = svg('<path d="m15 18-6-6 6-6"/>');
+
+  const take = document.createElement("button");
+  take.type = "button";
+  take.setAttribute("aria-label", "Take photo");
+  take.title = "Take photo";
+  take.style.cssText = "position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:84px;height:84px;border:7px solid rgba(255,255,255,.25);border-radius:50%;background:#fff;box-shadow:0 2px 8px #0004;cursor:pointer;";
+
+  const notice = document.createElement("div");
+  notice.setAttribute("role", "status");
+  notice.style.cssText = "position:absolute;left:18px;right:90px;top:14px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.5);font-size:13px;display:none;";
+
+  preview.append(video, flash, switchCamera, cancel, back, take, notice);
+  modal.append(preview);
+  document.body.append(modal);
 
   function stopStream() {
     if (stream) stream.getTracks().forEach(track => track.stop());
@@ -376,66 +407,85 @@ async function openLiveCamera() {
     stopStream();
     modal.remove();
   }
-  async function startCamera(mode) {
+  function showNotice(message) {
+    notice.textContent = message;
+    notice.style.display = "block";
+    window.setTimeout(() => { if (!closed) notice.style.display = "none"; }, 2600);
+  }
+  async function startCamera() {
     stopStream();
+    flashOn = false;
+    flash.innerHTML = flashOffSvg;
+    flash.setAttribute("aria-label", "Flash off");
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: mode } },
+        video: { facingMode: { ideal: facingMode } },
         audio: false
       });
-      facingMode = mode;
+      if (closed) { stopStream(); return; }
       video.srcObject = stream;
-      // Only mirror the front-camera preview. Never mirror the rear camera.
-      video.style.transform = mode === "user" ? "scaleX(-1)" : "none";
-      await video.play();
+      video.style.transform = facingMode === "user" ? "scaleX(-1)" : "none";
+      await video.play().catch(() => {});
+      const track = stream.getVideoTracks()[0];
+      const caps = track?.getCapabilities?.();
+      flash.disabled = !(caps && "torch" in caps && caps.torch);
+      flash.style.opacity = flash.disabled ? ".55" : "1";
+      flash.title = flash.disabled ? "ဒီကင်မရာမှာ Flash မပံ့ပိုးပါ" : "Flash";
     } catch (error) {
-      if (mode === "environment") {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          video.srcObject = stream;
-          video.style.transform = "none";
-          await video.play();
-          return;
-        } catch (_) {}
-      }
-      closeCamera();
-      alert(error.name === "NotAllowedError"
-        ? "Camera Permission ကို Allow လုပ်ပေးပါ။"
-        : "Camera ဖွင့်မရပါ။ HTTPS နှင့် Camera Permission ကို စစ်ပါ။");
+      if (!closed) showNotice(error.name === "NotAllowedError" ? "Camera Permission ကို Allow လုပ်ပေးပါ။" : "Camera ဖွင့်မရပါ။ HTTPS နှင့် Camera Permission ကို စစ်ပါ။");
     }
   }
 
+  flash.onclick = async () => {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    try {
+      const caps = track?.getCapabilities?.();
+      if (!caps || !("torch" in caps) || !caps.torch) {
+        showNotice("ဒီဖုန်း/ကင်မရာက Flash ကို မပံ့ပိုးပါ။");
+        return;
+      }
+      flashOn = !flashOn;
+      await track.applyConstraints({ advanced: [{ torch: flashOn }] });
+      flash.innerHTML = flashOn ? flashOnSvg : flashOffSvg;
+      flash.setAttribute("aria-label", flashOn ? "Flash on" : "Flash off");
+    } catch (_) {
+      flashOn = false;
+      flash.innerHTML = flashOffSvg;
+      flash.setAttribute("aria-label", "Flash off");
+      showNotice("Flash မဖွင့်နိုင်ပါ။ ဒီ browser သို့မဟုတ် ကင်မရာက မပံ့ပိုးနိုင်ပါ။");
+    }
+  };
+
+  switchCamera.onclick = async () => {
+    facingMode = facingMode === "environment" ? "user" : "environment";
+    await startCamera();
+  };
   cancel.onclick = closeCamera;
-  switchCamera.onclick = () => startCamera(facingMode === "environment" ? "user" : "environment");
+  back.onclick = closeCamera;
   take.onclick = async () => {
-    if (!video.videoWidth || closed) {
-      alert("Camera ဖွင့်နေဆဲပါ။ ခဏစောင့်ပါ။");
+    if (!video.videoWidth || !stream) {
+      showNotice("Camera ဖွင့်နေဆဲပါ။ ခဏစောင့်ပါ။");
       return;
     }
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    // Rear camera is saved as captured (not left-right reversed).
-    // Front camera photo is saved naturally too; mirroring is preview-only.
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
-    if (!blob) {
-      alert("ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။");
-      return;
+    const context = canvas.getContext("2d");
+    if (facingMode === "user") {
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
     }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    if (!blob) { showNotice("ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။"); return; }
     const photo = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
     closeCamera();
     handleFiles([photo]);
   };
 
-  top.append(flash);
-  bottom.append(cancel, take, switchCamera);
-  modal.append(video, top, bottom);
-  document.body.append(modal);
-  await startCamera(facingMode);
+  await startCamera();
 }
-
 function closeAttachMenu() {
   attachMenu.classList.add("hidden");
   attachBtn.setAttribute("aria-expanded", "false");
