@@ -327,100 +327,140 @@ input.addEventListener("keydown", e => {
 });
 async function openLiveCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    alert("Camera အသုံးပြုရန် HTTPS ဖြင့် ဖွင့်ပေးပါ။");
+    alert("Camera အသုံးပြုရန် HTTPS ဖြင့် ဖွင့်ပေးပါ။ Chrome/Safari browser ဖြင့် ပြန်ဖွင့်ပါ။");
     return;
   }
 
-  let stream;
+  let stream = null;
+  let facingMode = "environment";
+  let torchOn = false;
+  let busy = false;
 
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false
-    });
+  const modal = document.createElement("div");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-label", "James AI Camera");
+  modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;box-sizing:border-box;color:#fff;";
 
-    const modal = document.createElement("div");
-    modal.style.cssText = `
-      position:fixed;inset:0;z-index:99999;
-      background:#000;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;gap:16px;
-      padding:16px;
-    ` ;
+  const video = document.createElement("video");
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.setAttribute("playsinline", "");
+  video.style.cssText = "width:100%;height:min(72vh,760px);object-fit:contain;background:#080808;border-radius:12px;";
 
-    const video = document.createElement("video");
-    video.autoplay = true;
-    video.playsInline = true;
-    video.muted = true;
-    video.srcObject = stream;
-    video.style.cssText =
-      "width:100%;max-height:75vh;object-fit:contain;";
+  const status = document.createElement("div");
+  status.textContent = "Camera ဖွင့်နေသည်…";
+  status.style.cssText = "font-size:14px;color:#ccc;text-align:center;min-height:20px;";
 
-    const controls = document.createElement("div");
-    controls.style.cssText =
-      "display:flex;gap:12px;flex-wrap:wrap;justify-content:center;";
+  const controls = document.createElement("div");
+  controls.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;justify-content:center;width:100%;max-width:600px;";
 
-    const take = document.createElement("button");
-    take.textContent = "📸 Take Photo";
-    take.style.cssText =
-      "padding:14px 22px;border:0;border-radius:12px;font-size:17px;";
+  function makeButton(label) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.style.cssText = "padding:13px 18px;border:0;border-radius:14px;font-size:16px;background:#f5f5f5;color:#111;cursor:pointer;min-height:48px;";
+    return b;
+  }
+  const switchBtn = makeButton("🔄 Switch Camera");
+  const flashBtn = makeButton("⚡ Flash Off");
+  const take = makeButton("📸 Take Photo");
+  take.style.fontWeight = "700";
+  const cancel = makeButton("Cancel");
 
-    const cancel = document.createElement("button");
-    cancel.textContent = "Cancel";
-    cancel.style.cssText =
-      "padding:14px 22px;border:0;border-radius:12px;font-size:17px;";
-
-    function closeCamera() {
-      stream.getTracks().forEach(track => track.stop());
-      video.srcObject = null;
-      modal.remove();
+  function stopStream() {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    video.srcObject = null;
+    torchOn = false;
+  }
+  function closeCamera() {
+    stopStream();
+    modal.remove();
+  }
+  async function startCamera(mode) {
+    stopStream();
+    status.textContent = "Camera ဖွင့်နေသည်…";
+    take.disabled = switchBtn.disabled = flashBtn.disabled = true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: mode }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      facingMode = mode;
+      video.srcObject = stream;
+      await video.play();
+      status.textContent = mode === "user" ? "Front Camera" : "Back Camera";
+      switchBtn.disabled = take.disabled = false;
+      const track = stream.getVideoTracks()[0];
+      const caps = track?.getCapabilities?.() || {};
+      flashBtn.disabled = !caps.torch;
+      flashBtn.textContent = caps.torch ? "⚡ Flash Off" : "⚡ Flash မထောက်ပံ့ပါ";
+      if (!caps.torch) flashBtn.title = "ဒီ Camera မှာ Torch မထောက်ပံ့ပါ";
+    } catch (error) {
+      stopStream();
+      status.textContent = error.name === "NotAllowedError"
+        ? "Camera Permission ကို Allow လုပ်ပေးပါ။"
+        : "Camera ဖွင့်မရပါ။ HTTPS နှင့် Camera Permission ကို စစ်ပါ။";
+      take.disabled = switchBtn.disabled = true;
+      flashBtn.disabled = true;
     }
+  }
 
-    cancel.onclick = closeCamera;
-
-    take.onclick = async () => {
-      if (!video.videoWidth) {
-        alert("Camera ဖွင့်နေဆဲပါ။ ခဏစောင့်ပါ။");
-        return;
-      }
-
+  switchBtn.onclick = async () => {
+    if (busy) return;
+    torchOn = false;
+    await startCamera(facingMode === "environment" ? "user" : "environment");
+  };
+  flashBtn.onclick = async () => {
+    const track = stream?.getVideoTracks?.()[0];
+    if (!track) return;
+    try {
+      torchOn = !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+      flashBtn.textContent = torchOn ? "⚡ Flash On" : "⚡ Flash Off";
+    } catch (_) {
+      torchOn = false;
+      flashBtn.textContent = "⚡ Flash မရနိုင်ပါ";
+    }
+  };
+  cancel.onclick = closeCamera;
+  take.onclick = async () => {
+    if (busy) return;
+    if (!video.videoWidth || !video.videoHeight) {
+      status.textContent = "Camera ဖွင့်နေဆဲပါ။ ခဏစောင့်ပါ။";
+      return;
+    }
+    busy = true;
+    take.disabled = true;
+    try {
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      canvas.getContext("2d").drawImage(video, 0, 0);
-
-      const blob = await new Promise(resolve =>
-        canvas.toBlob(resolve, "image/jpeg", 0.9)
-      );
-
-      if (!blob) {
-        alert("ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။");
-        return;
+      const ctx = canvas.getContext("2d");
+      if (facingMode === "user") {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
       }
-
-      const photo = new File(
-        [blob],
-        camera-`${Date.now()}.jpg`,
-        { type: "image/jpeg" }
-      );
-
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
+      if (!blob) throw new Error("ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။");
+      const photo = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
       closeCamera();
       handleFiles([photo]);
-    };
+    } catch (error) {
+      status.textContent = error.message || "ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။";
+      busy = false;
+      take.disabled = false;
+    }
+  };
 
-    controls.append(take, cancel);
-    modal.append(video, controls);
-    document.body.append(modal);
-
-  } catch (error) {
-    if (stream) stream.getTracks().forEach(track => track.stop());
-
-    alert(
-      error.name === "NotAllowedError"
-        ? "Camera Permission ကို Allow လုပ်ပေးပါ။"
-        : "Camera ဖွင့်မရပါ။ HTTPS နှင့် Camera Permission ကို စစ်ပါ။"
-    );
-  }
+  controls.append(switchBtn, flashBtn, take, cancel);
+  modal.append(video, status, controls);
+  document.body.append(modal);
+  await startCamera(facingMode);
 }
+
 function closeAttachMenu() {
   attachMenu.classList.add("hidden");
   attachBtn.setAttribute("aria-expanded", "false");
