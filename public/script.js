@@ -325,7 +325,102 @@ input.addEventListener("keydown", e => {
     form.requestSubmit();
   }
 });
+async function openLiveCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Camera အသုံးပြုရန် HTTPS ဖြင့် ဖွင့်ပေးပါ။");
+    return;
+  }
 
+  let stream;
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+      position:fixed;inset:0;z-index:99999;
+      background:#000;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:16px;
+      padding:16px;
+    ` ;
+
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = stream;
+    video.style.cssText =
+      "width:100%;max-height:75vh;object-fit:contain;";
+
+    const controls = document.createElement("div");
+    controls.style.cssText =
+      "display:flex;gap:12px;flex-wrap:wrap;justify-content:center;";
+
+    const take = document.createElement("button");
+    take.textContent = "📸 Take Photo";
+    take.style.cssText =
+      "padding:14px 22px;border:0;border-radius:12px;font-size:17px;";
+
+    const cancel = document.createElement("button");
+    cancel.textContent = "Cancel";
+    cancel.style.cssText =
+      "padding:14px 22px;border:0;border-radius:12px;font-size:17px;";
+
+    function closeCamera() {
+      stream.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+      modal.remove();
+    }
+
+    cancel.onclick = closeCamera;
+
+    take.onclick = async () => {
+      if (!video.videoWidth) {
+        alert("Camera ဖွင့်နေဆဲပါ။ ခဏစောင့်ပါ။");
+        return;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+
+      const blob = await new Promise(resolve =>
+        canvas.toBlob(resolve, "image/jpeg", 0.9)
+      );
+
+      if (!blob) {
+        alert("ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။");
+        return;
+      }
+
+      const photo = new File(
+        [blob],
+        camera-`${Date.now()}.jpg`,
+        { type: "image/jpeg" }
+      );
+
+      closeCamera();
+      handleFiles([photo]);
+    };
+
+    controls.append(take, cancel);
+    modal.append(video, controls);
+    document.body.append(modal);
+
+  } catch (error) {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+
+    alert(
+      error.name === "NotAllowedError"
+        ? "Camera Permission ကို Allow လုပ်ပေးပါ။"
+        : "Camera ဖွင့်မရပါ။ HTTPS နှင့် Camera Permission ကို စစ်ပါ။"
+    );
+  }
+}
 function closeAttachMenu() {
   attachMenu.classList.add("hidden");
   attachBtn.setAttribute("aria-expanded", "false");
@@ -336,11 +431,24 @@ attachBtn.addEventListener("click", (event) => {
   attachMenu.classList.toggle("hidden", !opening);
   attachBtn.setAttribute("aria-expanded", String(opening));
 });
-attachMenu.addEventListener("click", (event) => {
+attachMenu.addEventListener("click", async (event) => {
   const option = event.target.closest("[data-attach]");
   if (!option) return;
-  const target = { camera: cameraInput, photos: photosInput, files: documentsInput }[option.dataset.attach];
+
+  event.stopPropagation();
+  const type = option.dataset.attach;
   closeAttachMenu();
+
+  if (type === "camera") {
+    await openLiveCamera();
+    return;
+  }
+
+  const target = {
+    photos: photosInput,
+    files: documentsInput
+  }[type];
+
   if (target) target.click();
 });
 document.addEventListener("click", (event) => {
