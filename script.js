@@ -359,10 +359,10 @@ newChatBtn.addEventListener("click", () => {
   history = [];
   saveHistory();
   messages.innerHTML = `<div class="welcome"><img class="welcome-logo" src="jamesai-logo.jpg" alt="James AI logo"><h2>What can I help with?</h2><p>မေးချင်တာကို ရိုက်ပါ၊ James AI ကို မေးလို့ရပါတယ်။</p><div class="quick-grid">
-    <button class="quick" data-prompt="Python ကို beginner အနေနဲ့ ဘယ်လိုစလေ့လာရမလဲ?">💻 Coding</button>
-    <button class="quick" data-prompt="Photosynthesis ကို ရိုးရိုးရှင်းရှင်းရှင်းပြပါ။">📚 Study</button>
-    <button class="quick" data-prompt="2x + 7 = 19 ကို အဆင့်လိုက်ဖြေရှင်းပေးပါ။">🧮 Math</button>
-    <button class="quick" data-prompt="ဒီစာကို English လို ဘာသာပြန်ပေးပါ။">🌐 Translate</button>
+    <button class="quick" data-prompt="Python ကို beginner အနေနဲ့ ဘယ်လိုစလေ့လာရမလဲ?"><svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4M7 8l-2 2 2 2m10-4 2 2-2 2m-4-5-2 6"/></svg> Coding</button>
+    <button class="quick" data-prompt="Photosynthesis ကို ရိုးရိုးရှင်းရှင်းရှင်းပြပါ။"><svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg> Study</button>
+    <button class="quick" data-prompt="2x + 7 = 19 ကို အဆင့်လိုက်ဖြေရှင်းပေးပါ။"><svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2m4 0h2m-8 4h2m4 0h2m-8 4h2m4 0h2"/></svg> Math</button>
+    <button class="quick" data-prompt="ဒီစာကို English လို ဘာသာပြန်ပေးပါ။"><svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg> Translate</button>
   </div></div>`;
   $$(".quick").forEach(b => b.addEventListener("click", () => { input.value = b.dataset.prompt || ""; autoResize(); input.focus(); }));
   openView("chat");
@@ -650,7 +650,7 @@ $("#generateImageBtn")?.addEventListener("click", async () => {
     result.classList.remove("hidden");
     result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><a class="primary-btn" href="${data.image}" download="james-ai-generated.png">⬇ Download</a></div>`;
   } catch(e) { toast("⚠️ " + e.message); }
-  finally { btn.disabled = false; btn.textContent = "✨ Generate Image"; }
+  finally { btn.disabled = false; btn.textContent = "<svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg> Generate Image"; }
 });
 
 
