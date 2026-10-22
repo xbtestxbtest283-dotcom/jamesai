@@ -650,7 +650,7 @@ $("#generateImageBtn")?.addEventListener("click", async () => {
     result.classList.remove("hidden");
     result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><a class="primary-btn" href="${data.image}" download="james-ai-generated.png">⬇ Download</a></div>`;
   } catch(e) { toast("⚠️ " + e.message); }
-  finally { btn.disabled = false; btn.textContent = "<svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg> Generate Image"; }
+  finally { btn.disabled = false; btn.innerHTML = '<svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg> Generate Image'; }
 });
 
 
