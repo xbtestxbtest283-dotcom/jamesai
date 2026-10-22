@@ -78,3 +78,9 @@ body.auth-required .app-shell {
 
 /* ChatGPT-style attachment menu */
 .attach-menu-wrap{position:relative;display:flex;align-items:center;flex-shrink:0}.attach-btn{display:grid;place-items:center}.attach-btn svg,.attach-menu-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.attach-menu{position:absolute;left:0;bottom:calc(100% + 12px);z-index:1000;width:224px;padding:8px;background:#2f2f2f;border:1px solid rgba(255,255,255,.1);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.4)}.attach-menu-item{width:100%;display:flex;align-items:center;gap:14px;padding:10px 8px;border:0;border-radius:13px;background:transparent;color:#f7f7f7;text-align:left;font:inherit;font-size:16px;cursor:pointer}.attach-menu-item:active,.attach-menu-item:hover{background:rgba(255,255,255,.1)}.attach-menu-icon{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;background:#414141;color:#f7f7f7;flex-shrink:0}.attach-menu-item span:last-child{font-size:16px}
+
+/* JamesAI menu SVG icons */
+.menu-icon{width:22px;height:22px;flex:0 0 22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;color:#20c9ff;filter:drop-shadow(0 1px 4px rgba(45,80,255,.22))}.nav-item:hover .menu-icon,.nav-item.active .menu-icon{color:#6b7dff}
+
+/* James AI SVG icon refresh: keeps existing layout and interactions */
+.ui-svg-icon{width:22px;height:22px;display:inline-block;vertical-align:-4px;margin-right:8px;flex:0 0 22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;color:#20c9ff;filter:drop-shadow(0 1px 4px rgba(45,80,255,.22))}.tool-header .ui-svg-icon{width:24px;height:24px;vertical-align:-5px}.quick .ui-svg-icon{width:20px;height:20px;vertical-align:-4px;margin-right:7px}
