@@ -97,7 +97,12 @@ const newChatBtn = $("#newChatBtn");
 const sidebar = $("#sidebar");
 const mobileMenuBtn = $("#mobileMenuBtn");
 const fileInput = $("#fileInput");
+const chatPhotoInput = $("#photoInput");
 const attachBtn = $("#attachBtn");
+const attachMenu = $("#attachMenu");
+const cameraInput = $("#cameraInput");
+const photosInput = $("#photosInput");
+const documentsInput = $("#documentsInput");
 const attachmentPreview = $("#attachmentPreview");
 
 let history = JSON.parse(localStorage.getItem("jamesai_history") || "[]");
@@ -320,10 +325,211 @@ input.addEventListener("keydown", e => {
     form.requestSubmit();
   }
 });
+async function openLiveCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Camera အသုံးပြုရန် HTTPS ဖြင့် ဖွင့်ပေးပါ။");
+    return;
+  }
 
-attachBtn.addEventListener("click", () => fileInput.click());
+  let stream = null;
+  let facingMode = "environment";
+  let flashOn = false;
+  let closed = false;
+
+  const svg = (paths) => `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const flashOnSvg = svg('<path d="M13 2 4.5 13h6L10 22l9.5-12h-6L13 2Z"/>');
+  const flashOffSvg = svg('<path d="M13 2 4.5 13h6L10 22l9.5-12h-6L13 2Z"/><path d="m3 3 18 18"/>');
+  const switchSvg = svg('<path d="M20 7h-5l2.5-2.5"/><path d="M4 17h5l-2.5 2.5"/><path d="M5 9a7 7 0 0 1 12-3l.5.5M19 15a7 7 0 0 1-12 3l-.5-.5"/>');
+  const closeSvg = svg('<path d="m18 6-12 12M6 6l12 12"/>');
+  const modal = document.createElement("div");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-label", "Camera");
+  modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:transparent;overflow:hidden;color:#fff;font-family:inherit;";
+
+  const preview = document.createElement("div");
+  preview.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:60vh;min-height:360px;max-height:calc(100dvh - 180px);overflow:hidden;border-radius:30px 30px 0 0;background:#000;";
+  const video = document.createElement("video");
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;background:#000;";
+
+  const buttonStyle = "position:absolute;display:flex;align-items:center;justify-content:center;width:58px;height:58px;border:0;border-radius:50%;background:rgba(30,30,30,.72);color:#fff;box-shadow:0 2px 8px #0002;padding:0;cursor:pointer; -webkit-tap-highlight-color:transparent;";
+  const flash = document.createElement("button");
+  flash.type = "button";
+  flash.setAttribute("aria-label", "Flash off");
+  flash.title = "Flash";
+  flash.style.cssText = buttonStyle + "right:20px;top:calc(50% - 88px);";
+  flash.innerHTML = flashOffSvg;
+
+  const switchCamera = document.createElement("button");
+  switchCamera.type = "button";
+  switchCamera.setAttribute("aria-label", "Switch camera");
+  switchCamera.title = "Switch camera";
+  switchCamera.style.cssText = buttonStyle + "right:20px;top:calc(50% - 12px);";
+  switchCamera.innerHTML = switchSvg;
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.setAttribute("aria-label", "Close camera");
+  cancel.title = "Close camera";
+  cancel.style.cssText = buttonStyle + "right:20px;bottom:20px;";
+  cancel.innerHTML = closeSvg;
+
+  const back = document.createElement("button");
+  back.type = "button";
+  back.setAttribute("aria-label", "Back");
+  back.style.cssText = buttonStyle + "left:20px;bottom:20px;";
+  back.innerHTML = svg('<path d="m15 18-6-6 6-6"/>');
+
+  const take = document.createElement("button");
+  take.type = "button";
+  take.setAttribute("aria-label", "Take photo");
+  take.title = "Take photo";
+  take.style.cssText = "position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:84px;height:84px;border:7px solid rgba(255,255,255,.25);border-radius:50%;background:#fff;box-shadow:0 2px 8px #0004;cursor:pointer;";
+
+  const notice = document.createElement("div");
+  notice.setAttribute("role", "status");
+  notice.style.cssText = "position:absolute;left:18px;right:90px;top:14px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.5);font-size:13px;display:none;";
+
+  preview.append(video, flash, switchCamera, cancel, back, take, notice);
+  modal.append(preview);
+  document.body.append(modal);
+
+  function stopStream() {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    video.srcObject = null;
+  }
+  function closeCamera() {
+    if (closed) return;
+    closed = true;
+    stopStream();
+    modal.remove();
+  }
+  function showNotice(message) {
+    notice.textContent = message;
+    notice.style.display = "block";
+    window.setTimeout(() => { if (!closed) notice.style.display = "none"; }, 2600);
+  }
+  async function startCamera() {
+    stopStream();
+    flashOn = false;
+    flash.innerHTML = flashOffSvg;
+    flash.setAttribute("aria-label", "Flash off");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facingMode } },
+        audio: false
+      });
+      if (closed) { stopStream(); return; }
+      video.srcObject = stream;
+      video.style.transform = facingMode === "user" ? "scaleX(-1)" : "none";
+      await video.play().catch(() => {});
+      const track = stream.getVideoTracks()[0];
+      const caps = track?.getCapabilities?.();
+      flash.disabled = !(caps && "torch" in caps && caps.torch);
+      flash.style.opacity = flash.disabled ? ".55" : "1";
+      flash.title = flash.disabled ? "ဒီကင်မရာမှာ Flash မပံ့ပိုးပါ" : "Flash";
+    } catch (error) {
+      if (!closed) showNotice(error.name === "NotAllowedError" ? "Camera Permission ကို Allow လုပ်ပေးပါ။" : "Camera ဖွင့်မရပါ။ HTTPS နှင့် Camera Permission ကို စစ်ပါ။");
+    }
+  }
+
+  flash.onclick = async () => {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    try {
+      const caps = track?.getCapabilities?.();
+      if (!caps || !("torch" in caps) || !caps.torch) {
+        showNotice("ဒီဖုန်း/ကင်မရာက Flash ကို မပံ့ပိုးပါ။");
+        return;
+      }
+      flashOn = !flashOn;
+      await track.applyConstraints({ advanced: [{ torch: flashOn }] });
+      flash.innerHTML = flashOn ? flashOnSvg : flashOffSvg;
+      flash.setAttribute("aria-label", flashOn ? "Flash on" : "Flash off");
+    } catch (_) {
+      flashOn = false;
+      flash.innerHTML = flashOffSvg;
+      flash.setAttribute("aria-label", "Flash off");
+      showNotice("Flash မဖွင့်နိုင်ပါ။ ဒီ browser သို့မဟုတ် ကင်မရာက မပံ့ပိုးနိုင်ပါ။");
+    }
+  };
+
+  switchCamera.onclick = async () => {
+    facingMode = facingMode === "environment" ? "user" : "environment";
+    await startCamera();
+  };
+  cancel.onclick = closeCamera;
+  back.onclick = closeCamera;
+  take.onclick = async () => {
+    if (!video.videoWidth || !stream) {
+      showNotice("Camera ဖွင့်နေဆဲပါ။ ခဏစောင့်ပါ။");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (facingMode === "user") {
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    if (!blob) { showNotice("ဓာတ်ပုံရိုက်မရပါ။ ထပ်စမ်းပါ။"); return; }
+    const photo = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
+    closeCamera();
+    handleFiles([photo]);
+  };
+
+  await startCamera();
+}
+function closeAttachMenu() {
+  attachMenu.classList.add("hidden");
+  attachBtn.setAttribute("aria-expanded", "false");
+}
+attachBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const opening = attachMenu.classList.contains("hidden");
+  attachMenu.classList.toggle("hidden", !opening);
+  attachBtn.setAttribute("aria-expanded", String(opening));
+});
+attachMenu.addEventListener("click", async (event) => {
+  const option = event.target.closest("[data-attach]");
+  if (!option) return;
+
+  event.stopPropagation();
+  const type = option.dataset.attach;
+  closeAttachMenu();
+
+  if (type === "camera") {
+    await openLiveCamera();
+    return;
+  }
+
+  const target = {
+    photos: photosInput,
+    files: documentsInput
+  }[type];
+
+  if (target) target.click();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".attach-menu-wrap")) closeAttachMenu();
+});
 fileInput.addEventListener("change", () => handleFiles(fileInput.files));
-
+[cameraInput, photosInput, documentsInput].forEach((picker) => {
+  picker.addEventListener("change", () => {
+    if (picker.files?.length) handleFiles(picker.files);
+    picker.value = "";
+  });
+});
+cameraInput.addEventListener("change", () => {
+  handleFiles(cameraInput.files);
+  cameraInput.value = "";
+});
 function openView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
   $(`#${view}View`)?.classList.add("active");
@@ -334,13 +540,6 @@ function openView(view) {
 }
 
 $$("[data-view]").forEach(b => b.addEventListener("click", () => openView(b.dataset.view)));
-
-function downloadApk() {
-  window.location.href = apiUrl("/download-apk");
-}
-
-$$(".apk-download-btn").forEach(b => b.addEventListener("click", downloadApk));
-$("#settingsDownloadApkBtn")?.addEventListener("click", downloadApk);
 $$("[data-prompt]").forEach(b => b.addEventListener("click", () => {
   const p = b.dataset.prompt || "";
   if (b.dataset.view) return;
@@ -591,7 +790,7 @@ function renderPlans(plans) {
       <div class="plan-badge">${current ? "CURRENT" : paid ? "UPGRADE" : "DEFAULT"}</div>
       <h3>${escapeHtml(p.name)}</h3>
       <div class="plan-price">${escapeHtml(p.price)}</div>
-      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages / 24 hours</li><li>${p.images >= 50 ? "Limited" : p.images} Images / 24 hours</li><li>${p.durationDays ? `${p.durationDays} Days active` : "Quota refreshes 24 hours after reaching the limit"}</li></ul>
+      <ul><li>${p.messages >= 500 ? "Limited" : p.messages} Messages</li><li>${p.images >= 50 ? "Limited" : p.images} Images</li><li>${p.durationDays ? `${p.durationDays} Days` : "24-hour rolling quota"}</li></ul>
       ${paid ? `<button class="primary-btn plan-buy-btn" data-plan="${p.id}" type="button">${p.paymentUrl ? "Buy / Pay" : "Setup Payment"}</button>` : `<button class="secondary-btn" type="button" disabled>Free Plan</button>`}
     </div>`;
   }).join("");
@@ -648,7 +847,35 @@ $("#generateImageBtn")?.addEventListener("click", async () => {
     currentUsage = data.usage || currentUsage; updateUsageUI();
     const result = $("#generatedImageResult");
     result.classList.remove("hidden");
-    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><a class="primary-btn" href="${data.image}" download="james-ai-generated.png">⬇ Download</a></div>`;
+    // Keep the generated data URL on the button and download it as a Blob.
+    // This is more reliable on Android browsers than downloading a data: URL directly.
+    result.innerHTML = `<img src="${data.image}" alt="Generated image"><div class="image-actions"><button type="button" class="primary-btn" id="downloadGeneratedImageBtn">⬇ Download</button></div>`;
+    const downloadButton = $("#downloadGeneratedImageBtn");
+    downloadButton.addEventListener("click", () => {
+      try {
+        const match = String(data.image || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
+        if (!match) throw new Error("Generated image data is invalid.");
+        const mimeType = match[1];
+        const binary = atob(match[2]);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const ext = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
+        link.href = url;
+        link.download = `james-ai-generated.${ext}`;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast("ပုံ Download လုပ်ရန် စတင်လိုက်ပါပြီ။");
+      } catch (error) {
+        console.error("GENERATED IMAGE DOWNLOAD ERROR:", error);
+        toast("Download မရပါ။ ပုံကို ဖိထားပြီး Save image ကို စမ်းပါ။");
+      }
+    });
   } catch(e) { toast("⚠️ " + e.message); }
   finally { btn.disabled = false; btn.innerHTML = '<svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg> Generate Image'; }
 });
@@ -780,33 +1007,57 @@ window.addEventListener("load", () => {
 initAuthentication();
 
 
-// James Recap UI (API processing requires a configured backend)
+// James Recap + ElevenLabs voiceover integration
 function setupRecapUI() {
   const moviePanel = document.querySelector('#movieRecapPanel');
   const voicePanel = document.querySelector('#voiceClonePanel');
-  document.querySelector('#openMovieRecap')?.addEventListener('click', () => { moviePanel?.classList.toggle('hidden'); });
-  document.querySelector('#openVoiceClone')?.addEventListener('click', () => { voicePanel?.classList.toggle('hidden'); });
+  document.querySelector('#openMovieRecap')?.addEventListener('click', () => moviePanel?.classList.toggle('hidden'));
+  document.querySelector('#openVoiceClone')?.addEventListener('click', () => voicePanel?.classList.toggle('hidden'));
+
   document.querySelector('#recapVideoFile')?.addEventListener('change', e => {
-    const f = e.target.files?.[0]; const status = document.querySelector('#recapStatus');
-    if (f && status) status.textContent = `ရွေးထားသော video: ${f.name} (${(f.size / 1048576).toFixed(1)} MB) — AI processing အတွက် API/backend လိုအပ်ပါတယ်။`;
+    const f = e.target.files?.[0], status = document.querySelector('#recapStatus');
+    if (f && status) status.textContent = `ရွေးထားသော video: ${f.name}. AI recap အတွက် transcript/subtitle စာသားကို ထည့်ပေးပါ။`;
   });
   document.querySelector('#voiceSampleFile')?.addEventListener('change', e => {
-    const f = e.target.files?.[0]; const status = document.querySelector('#voiceStatus');
-    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name} — Voice API ချိတ်ဆက်ပြီးမှ အသံထုတ်လုပ်နိုင်ပါမယ်။`;
+    const f = e.target.files?.[0], status = document.querySelector('#voiceStatus');
+    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name}. ဒီ endpoint က Render မှာ သတ်မှတ်ထားတဲ့ ElevenLabs Voice ID ကို အသုံးပြုပါမယ်။`;
   });
-  document.querySelector('#prepareRecapBtn')?.addEventListener('click', () => {
-    const f = document.querySelector('#recapVideoFile')?.files?.[0];
+
+  document.querySelector('#prepareRecapBtn')?.addEventListener('click', async () => {
     const script = document.querySelector('#recapScript')?.value.trim();
     const status = document.querySelector('#recapStatus');
-    if (!f && !script) { if (status) status.textContent = 'Video file ရွေးပါ သို့မဟုတ် Recap/Subtitle စာသား ထည့်ပါ။'; return; }
-    if (status) status.textContent = 'Input ကို ပြင်ဆင်ထားပါပြီ။ AI recap/translation/export အတွက် backend/API ချိတ်ဆက်ရန် လိုအပ်နေသေးသည်။';
+    if (!script) { if(status) status.textContent = 'Recap/Subtitle စာသား ထည့်ပေးပါ။ Video file ကို တိုက်ရိုက် decode မလုပ်နိုင်သေးပါ။'; return; }
+    const btn = document.querySelector('#prepareRecapBtn');
+    btn.disabled = true; if(status) status.textContent = 'OpenAI နဲ့ recap ပြင်ဆင်နေပါတယ်…';
+    try {
+      const r = await fetch(apiUrl('/api/recap'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({script})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error(d.error || 'Recap မအောင်မြင်ပါ။');
+      document.querySelector('#recapScript').value = d.recap;
+      if(status) status.textContent = 'Recap အောင်မြင်ပါပြီ။ စာသားကို ပြင်ဆင်နိုင်ပါတယ်။';
+    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+    finally { btn.disabled = false; }
   });
-  document.querySelector('#prepareVoiceBtn')?.addEventListener('click', () => {
-    const f = document.querySelector('#voiceSampleFile')?.files?.[0];
-    const script = document.querySelector('#voiceText')?.value.trim();
+
+  document.querySelector('#prepareVoiceBtn')?.addEventListener('click', async () => {
+    const text = document.querySelector('#voiceText')?.value.trim();
     const status = document.querySelector('#voiceStatus');
-    if (!f && !script) { if (status) status.textContent = 'Voice sample ရွေးပါ သို့မဟုတ် ဖတ်စေလိုသော စာသား ထည့်ပါ။'; return; }
-    if (status) status.textContent = 'Input ကို ပြင်ဆင်ထားပါပြီ။ TTS/Voice Clone ထုတ်လုပ်ရန် backend/API key ချိတ်ဆက်ရန် လိုအပ်နေသေးသည်။';
+    if (!text) { if(status) status.textContent = 'ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။'; return; }
+    const btn = document.querySelector('#prepareVoiceBtn');
+    btn.disabled = true; if(status) status.textContent = 'ElevenLabs က အသံဖန်တီးနေပါတယ်…';
+    try {
+      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
+      let player = document.querySelector('#jamesVoiceAudio');
+      if(!player) { player = document.createElement('audio'); player.id='jamesVoiceAudio'; player.controls=true; player.style.display='block'; player.style.width='100%'; btn.insertAdjacentElement('afterend',player); }
+      player.src = d.audio;
+      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။';
+      let link = document.querySelector('#jamesVoiceDownload');
+      if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
+      link.href=d.audio; link.download='james-voiceover.mp3';
+    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+    finally { btn.disabled = false; }
   });
 }
 setupRecapUI();

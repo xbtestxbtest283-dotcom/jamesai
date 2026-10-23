@@ -30,6 +30,8 @@ const apiKey = String(process.env.OPENAI_API_KEY || "")
   .replace(/^['"]|['"]$/g, "");
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const elevenLabsApiKey = String(process.env.ELEVENLABS_API_KEY || "").trim().replace(/^[\'"]|[\'"]$/g, "");
+const elevenLabsVoiceId = String(process.env.ELEVENLABS_VOICE_ID || "").trim();
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
 const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
@@ -595,6 +597,58 @@ Help with general questions, programming, study, translation, writing, math, exp
       ok: false,
       error: String(error?.message || "Server error")
     });
+  }
+});
+
+
+// AI recap preparation: summarizes supplied transcript/script using OpenAI.
+// Video files themselves are not directly decoded here; provide transcript/subtitle text.
+app.post("/api/recap", requireGoogleLogin, async (req, res) => {
+  try {
+    if (!client) return res.status(500).json({ ok:false, error:"OPENAI_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။" });
+    const source = String(req.body?.script || "").trim();
+    if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
+    if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
+    const user = makeUser(req.googleUser);
+    if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
+    const response = await client.responses.create({
+      model,
+      instructions: "You are James Recap. Create a concise, accurate video recap from the supplied transcript/subtitles. Keep key events in order, do not invent scenes. Reply in Burmese if source is Burmese. Output: Title, Recap, and optional subtitle-ready short lines.",
+      input: source
+    });
+    const recap = String(response.output_text || "").trim();
+    if (!recap) return res.status(502).json({ok:false,error:"OpenAI က recap မပြန်လာပါ။"});
+    incrementUsage(user, "message"); await saveUsers();
+    res.json({ok:true, recap, usage:publicPlan(user)});
+  } catch (error) {
+    console.error("RECAP ERROR:", error);
+    res.status(Number(error?.status || 500)).json({ok:false,error:String(error?.message || "Recap error")});
+  }
+});
+
+// ElevenLabs text-to-speech. Set ELEVENLABS_VOICE_ID in Render for an existing authorized voice.
+app.post("/api/voice", requireGoogleLogin, async (req, res) => {
+  try {
+    if (!elevenLabsApiKey) return res.status(500).json({ok:false,error:"ELEVENLABS_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။"});
+    const text = String(req.body?.text || "").trim();
+    const voiceId = String(req.body?.voiceId || elevenLabsVoiceId).trim();
+    if (!text) return res.status(400).json({ok:false,error:"ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။"});
+    if (!voiceId) return res.status(400).json({ok:false,error:"ELEVENLABS_VOICE_ID ကို Render Environment မှာ ထည့်ပေးပါ။"});
+    if (text.length > 5000) return res.status(413).json({ok:false,error:"စာသားသည် 5,000 characters ထက် မကျော်ရပါ။"});
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+      method:"POST",
+      headers:{"xi-api-key":elevenLabsApiKey,"Content-Type":"application/json","Accept":"audio/mpeg"},
+      body:JSON.stringify({text,model_id:"eleven_multilingual_v2",voice_settings:{stability:0.5,similarity_boost:0.75}})
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(()=> "");
+      return res.status(response.status).json({ok:false,error:`ElevenLabs error (${response.status}): ${detail.slice(0,400)}`});
+    }
+    const audio = Buffer.from(await response.arrayBuffer());
+    res.json({ok:true,audio:`data:audio/mpeg;base64,${audio.toString("base64")}`});
+  } catch(error) {
+    console.error("VOICE ERROR:",error);
+    res.status(500).json({ok:false,error:String(error?.message || "Voice generation error")});
   }
 });
 
