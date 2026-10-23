@@ -1005,3 +1005,35 @@ window.addEventListener("load", () => {
 
 
 initAuthentication();
+
+
+// James Recap UI (API processing requires a configured backend)
+function setupRecapUI() {
+  const moviePanel = document.querySelector('#movieRecapPanel');
+  const voicePanel = document.querySelector('#voiceClonePanel');
+  document.querySelector('#openMovieRecap')?.addEventListener('click', () => { moviePanel?.classList.toggle('hidden'); });
+  document.querySelector('#openVoiceClone')?.addEventListener('click', () => { voicePanel?.classList.toggle('hidden'); });
+  document.querySelector('#recapVideoFile')?.addEventListener('change', e => {
+    const f = e.target.files?.[0]; const status = document.querySelector('#recapStatus');
+    if (f && status) status.textContent = `ရွေးထားသော video: ${f.name} (${(f.size / 1048576).toFixed(1)} MB) — AI processing အတွက် API/backend လိုအပ်ပါတယ်။`;
+  });
+  document.querySelector('#voiceSampleFile')?.addEventListener('change', e => {
+    const f = e.target.files?.[0]; const status = document.querySelector('#voiceStatus');
+    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name} — Voice API ချိတ်ဆက်ပြီးမှ အသံထုတ်လုပ်နိုင်ပါမယ်။`;
+  });
+  document.querySelector('#prepareRecapBtn')?.addEventListener('click', () => {
+    const f = document.querySelector('#recapVideoFile')?.files?.[0];
+    const script = document.querySelector('#recapScript')?.value.trim();
+    const status = document.querySelector('#recapStatus');
+    if (!f && !script) { if (status) status.textContent = 'Video file ရွေးပါ သို့မဟုတ် Recap/Subtitle စာသား ထည့်ပါ။'; return; }
+    if (status) status.textContent = 'Input ကို ပြင်ဆင်ထားပါပြီ။ AI recap/translation/export အတွက် backend/API ချိတ်ဆက်ရန် လိုအပ်နေသေးသည်။';
+  });
+  document.querySelector('#prepareVoiceBtn')?.addEventListener('click', () => {
+    const f = document.querySelector('#voiceSampleFile')?.files?.[0];
+    const script = document.querySelector('#voiceText')?.value.trim();
+    const status = document.querySelector('#voiceStatus');
+    if (!f && !script) { if (status) status.textContent = 'Voice sample ရွေးပါ သို့မဟုတ် ဖတ်စေလိုသော စာသား ထည့်ပါ။'; return; }
+    if (status) status.textContent = 'Input ကို ပြင်ဆင်ထားပါပြီ။ TTS/Voice Clone ထုတ်လုပ်ရန် backend/API key ချိတ်ဆက်ရန် လိုအပ်နေသေးသည်။';
+  });
+}
+setupRecapUI();
