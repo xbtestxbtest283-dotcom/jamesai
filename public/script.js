@@ -1007,33 +1007,57 @@ window.addEventListener("load", () => {
 initAuthentication();
 
 
-// James Recap UI (API processing requires a configured backend)
+// James Recap + ElevenLabs voiceover integration
 function setupRecapUI() {
   const moviePanel = document.querySelector('#movieRecapPanel');
   const voicePanel = document.querySelector('#voiceClonePanel');
-  document.querySelector('#openMovieRecap')?.addEventListener('click', () => { moviePanel?.classList.toggle('hidden'); });
-  document.querySelector('#openVoiceClone')?.addEventListener('click', () => { voicePanel?.classList.toggle('hidden'); });
+  document.querySelector('#openMovieRecap')?.addEventListener('click', () => moviePanel?.classList.toggle('hidden'));
+  document.querySelector('#openVoiceClone')?.addEventListener('click', () => voicePanel?.classList.toggle('hidden'));
+
   document.querySelector('#recapVideoFile')?.addEventListener('change', e => {
-    const f = e.target.files?.[0]; const status = document.querySelector('#recapStatus');
-    if (f && status) status.textContent = `ရွေးထားသော video: ${f.name} (${(f.size / 1048576).toFixed(1)} MB) — AI processing အတွက် API/backend လိုအပ်ပါတယ်။`;
+    const f = e.target.files?.[0], status = document.querySelector('#recapStatus');
+    if (f && status) status.textContent = `ရွေးထားသော video: ${f.name}. AI recap အတွက် transcript/subtitle စာသားကို ထည့်ပေးပါ။`;
   });
   document.querySelector('#voiceSampleFile')?.addEventListener('change', e => {
-    const f = e.target.files?.[0]; const status = document.querySelector('#voiceStatus');
-    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name} — Voice API ချိတ်ဆက်ပြီးမှ အသံထုတ်လုပ်နိုင်ပါမယ်။`;
+    const f = e.target.files?.[0], status = document.querySelector('#voiceStatus');
+    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name}. ဒီ endpoint က Render မှာ သတ်မှတ်ထားတဲ့ ElevenLabs Voice ID ကို အသုံးပြုပါမယ်။`;
   });
-  document.querySelector('#prepareRecapBtn')?.addEventListener('click', () => {
-    const f = document.querySelector('#recapVideoFile')?.files?.[0];
+
+  document.querySelector('#prepareRecapBtn')?.addEventListener('click', async () => {
     const script = document.querySelector('#recapScript')?.value.trim();
     const status = document.querySelector('#recapStatus');
-    if (!f && !script) { if (status) status.textContent = 'Video file ရွေးပါ သို့မဟုတ် Recap/Subtitle စာသား ထည့်ပါ။'; return; }
-    if (status) status.textContent = 'Input ကို ပြင်ဆင်ထားပါပြီ။ AI recap/translation/export အတွက် backend/API ချိတ်ဆက်ရန် လိုအပ်နေသေးသည်။';
+    if (!script) { if(status) status.textContent = 'Recap/Subtitle စာသား ထည့်ပေးပါ။ Video file ကို တိုက်ရိုက် decode မလုပ်နိုင်သေးပါ။'; return; }
+    const btn = document.querySelector('#prepareRecapBtn');
+    btn.disabled = true; if(status) status.textContent = 'OpenAI နဲ့ recap ပြင်ဆင်နေပါတယ်…';
+    try {
+      const r = await fetch(apiUrl('/api/recap'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({script})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error(d.error || 'Recap မအောင်မြင်ပါ။');
+      document.querySelector('#recapScript').value = d.recap;
+      if(status) status.textContent = 'Recap အောင်မြင်ပါပြီ။ စာသားကို ပြင်ဆင်နိုင်ပါတယ်။';
+    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+    finally { btn.disabled = false; }
   });
-  document.querySelector('#prepareVoiceBtn')?.addEventListener('click', () => {
-    const f = document.querySelector('#voiceSampleFile')?.files?.[0];
-    const script = document.querySelector('#voiceText')?.value.trim();
+
+  document.querySelector('#prepareVoiceBtn')?.addEventListener('click', async () => {
+    const text = document.querySelector('#voiceText')?.value.trim();
     const status = document.querySelector('#voiceStatus');
-    if (!f && !script) { if (status) status.textContent = 'Voice sample ရွေးပါ သို့မဟုတ် ဖတ်စေလိုသော စာသား ထည့်ပါ။'; return; }
-    if (status) status.textContent = 'Input ကို ပြင်ဆင်ထားပါပြီ။ TTS/Voice Clone ထုတ်လုပ်ရန် backend/API key ချိတ်ဆက်ရန် လိုအပ်နေသေးသည်။';
+    if (!text) { if(status) status.textContent = 'ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။'; return; }
+    const btn = document.querySelector('#prepareVoiceBtn');
+    btn.disabled = true; if(status) status.textContent = 'ElevenLabs က အသံဖန်တီးနေပါတယ်…';
+    try {
+      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
+      let player = document.querySelector('#jamesVoiceAudio');
+      if(!player) { player = document.createElement('audio'); player.id='jamesVoiceAudio'; player.controls=true; player.style.display='block'; player.style.width='100%'; btn.insertAdjacentElement('afterend',player); }
+      player.src = d.audio;
+      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။';
+      let link = document.querySelector('#jamesVoiceDownload');
+      if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
+      link.href=d.audio; link.download='james-voiceover.mp3';
+    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+    finally { btn.disabled = false; }
   });
 }
 setupRecapUI();
