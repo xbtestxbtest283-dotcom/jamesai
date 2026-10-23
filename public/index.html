@@ -33,6 +33,8 @@
         <button class="nav-item" data-view="history"><svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2M3 12H1m4-7L3 3"/></svg> History</button>
         <button class="nav-item" data-view="plans"><svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z"/></svg> Plans & Purchase</button>
 
+        <button class="nav-item" data-view="recap"><svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3zM7 3v2m10-2v2"/></svg> James Recap</button>
+
         <div class="menu-label">TOOLS</div>
         <button class="nav-item" data-prompt="Help me with programming or code."><svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4M7 8l-2 2 2 2m10-4 2 2-2 2m-4-5-2 6"/></svg> Programming</button>
         <button class="nav-item" data-prompt="Help me study this topic step by step."><svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg> Study</button>
@@ -125,6 +127,43 @@
               </div>
             </div>
             <p class="photo-note">ပုံကို browser ထဲမှာပဲ ဖတ်/ပြင်/သိမ်းပါတယ်။ ရွေးထားတဲ့ပုံကို server သို့ မပို့ပါ။</p>
+          </div>
+        </section>
+
+
+        <section id="recapView" class="view">
+          <div class="recap-shell">
+            <div class="recap-topline">
+              <div class="recap-user"><span class="recap-avatar">N</span><strong>James Recap</strong></div>
+              <div class="recap-top-actions"><span class="recap-pill">Credit <b>∞</b></span><button type="button" class="recap-pill" data-view="plans">💳 Plans</button><span class="recap-profile">N</span></div>
+            </div>
+            <div class="recap-hero"><h2>James <span>Recap</span></h2><p>သင့်အတွက် AI Video & Voice Tools</p></div>
+            <button type="button" class="recap-tool-card" id="openMovieRecap">
+              <span class="recap-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="15" rx="2"/><path d="M3 10h18M7 6l3 4m2-4 3 4m2-4 3 4"/></svg></span>
+              <span class="recap-tool-copy"><strong>James Movie Recap</strong><small>AI Video · Subtitle · Overlay · Freeze · Voice · Export</small></span><span class="recap-chevron">›</span>
+            </button>
+            <div id="movieRecapPanel" class="recap-work-panel hidden">
+              <h3>Movie Recap Studio</h3>
+              <p>Video တင်ပြီး Recap အတွက် စာသား၊ Subtitle နဲ့ Voiceover ပြင်ဆင်ရန်။ အလိုအလျောက် AI processing အတွက် API ချိတ်ဆက်မှုလိုအပ်ပါတယ်။</p>
+              <label class="recap-field-label" for="recapVideoFile">Video file</label><input id="recapVideoFile" type="file" accept="video/*" class="recap-file-input">
+              <label class="recap-field-label" for="recapLanguage">Subtitle / Translation language</label><select id="recapLanguage" class="recap-field"><option value="my">မြန်မာ</option><option value="en">English</option><option value="th">ไทย</option><option value="zh">中文</option></select>
+              <label class="recap-field-label" for="recapScript">Recap script / subtitle text</label><textarea id="recapScript" class="recap-field" rows="4" placeholder="Recap စာသား သို့မဟုတ် Subtitle စာသား ထည့်ပါ..."></textarea>
+              <div class="recap-checks"><label><input type="checkbox" id="recapOverlay"> Overlay</label><label><input type="checkbox" id="recapFreeze"> Freeze frame</label><label><input type="checkbox" id="recapSubtitle" checked> Subtitle</label></div>
+              <button type="button" class="primary-btn" id="prepareRecapBtn">Prepare recap</button><p class="recap-status" id="recapStatus" role="status">API မချိတ်ဆက်ရသေးပါ — လက်ရှိမှာ file ရွေးခြင်းနှင့် script ပြင်ဆင်ခြင်း UI သာ အလုပ်လုပ်ပါတယ်။</p>
+            </div>
+            <button type="button" class="recap-tool-card" id="openVoiceClone">
+              <span class="recap-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg></span>
+              <span class="recap-tool-copy"><strong>James Voice Clone</strong><small>AI Voice Clone · Text-to-Speech · Voiceover</small></span><span class="recap-chevron">›</span>
+            </button>
+            <div id="voiceClonePanel" class="recap-work-panel hidden">
+              <h3>AI Voice Clone & TTS</h3><p>Voice sample နှင့် စာသားကို အသုံးပြုပြီး Voiceover ပြင်ဆင်ရန်။ အသံဖန်တီးမှုအတွက် သင့်လျော်သော Voice API key ချိတ်ဆက်ထားရပါမယ်။</p>
+              <label class="recap-field-label" for="voiceSampleFile">Voice sample (ခွင့်ပြုချက်ရှိသော အသံသာ အသုံးပြုပါ)</label><input id="voiceSampleFile" type="file" accept="audio/*" class="recap-file-input">
+              <label class="recap-field-label" for="voiceText">ဖတ်စေလိုသော စာသား</label><textarea id="voiceText" class="recap-field" rows="4" placeholder="အသံဖတ်စေလိုသော စာသား ရိုက်ပါ..."></textarea>
+              <label class="recap-field-label" for="voiceLanguage">Language</label><select id="voiceLanguage" class="recap-field"><option value="my">မြန်မာ</option><option value="en">English</option></select>
+              <button type="button" class="primary-btn" id="prepareVoiceBtn">Prepare voiceover</button><p class="recap-status" id="voiceStatus" role="status">API မချိတ်ဆက်ရသေးပါ — အသံထုတ်လုပ်မှုကို မလုပ်ဆောင်နိုင်သေးပါ။</p>
+            </div>
+            <div class="recap-benefits"><h3>James AI မှာ အသုံးပြုနိုင်မယ့် Tools</h3><ul><li>AI Voice Clone & Text-to-Speech (TTS)</li><li>Subtitle ဖန်တီးခြင်းနှင့် ဘာသာပြန်ခြင်း</li><li>ဖုန်း၊ PC၊ Laptop များတွင် အသုံးပြုနိုင်ရန် Responsive UI</li><li>TikTok နှင့် YouTube အတွက် Export workflow — output quality သည် source video နှင့် API ပေါ်မူတည်သည်</li></ul></div>
+            <p class="recap-disclaimer">မှတ်ချက် — ဒီအပိုင်းက UI အခြေခံဖြစ်ပါတယ်။ တကယ့် AI recap, voice clone, subtitle generation နဲ့ export လုပ်ဆောင်ချက်များအတွက် backend/API ချိတ်ဆက်မှုကို သီးခြားတပ်ဆင်ရပါမယ်။</p>
           </div>
         </section>
 
