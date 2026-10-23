@@ -780,7 +780,7 @@ window.addEventListener("load", () => {
 initAuthentication();
 
 
-// Nay Yaung Recap UI (API processing requires a configured backend)
+// James Recap UI (API processing requires a configured backend)
 function setupRecapUI() {
   const moviePanel = document.querySelector('#movieRecapPanel');
   const voicePanel = document.querySelector('#voiceClonePanel');
