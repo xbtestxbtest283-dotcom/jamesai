@@ -1122,10 +1122,21 @@ function setupRecapVideoExport() {
       const blob = new Blob(chunks,{type:'video/webm'});
       if (!blob.size) throw new Error('Video ဖိုင်မထွက်လာပါ။ ထပ်စမ်းကြည့်ပါ။');
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='james-ai-myanmar-recap.webm';
-      document.body.appendChild(a); a.click(); a.remove();
-      setStatus('Video Export ပြီးပါပြီ။ james-ai-myanmar-recap.webm ကို Download လုပ်နေပါတယ်။');
-      setTimeout(()=>URL.revokeObjectURL(url),60000);
+      const preview = document.querySelector('#recapExportPreview');
+      const player = document.querySelector('#recapExportPlayer');
+      const download = document.querySelector('#recapExportDownload');
+      if (player && preview) {
+        player.src = url;
+        preview.hidden = false;
+        if (download) download.href = url;
+        preview.scrollIntoView({behavior:'smooth', block:'start'});
+        setStatus('Video Export ပြီးပါပြီ။ အောက်မှာ Recap Video ကို ကြည့်နိုင်ပါပြီ။');
+      } else {
+        const a = document.createElement('a'); a.href=url; a.download='james-ai-myanmar-recap.webm';
+        document.body.appendChild(a); a.click(); a.remove();
+        setStatus('Video Export ပြီးပါပြီ။ Download လုပ်နေပါတယ်။');
+      }
+      
     } catch (e) { setStatus('Export မအောင်မြင်ပါ: '+(e?.message || 'Browser ခွင့်ပြုချက်/Video format ကို စစ်ပါ။')); }
     finally { if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t=>t.stop()); if(video?.src) URL.revokeObjectURL(video.src); btn.disabled=false; }
   });
