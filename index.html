@@ -173,11 +173,11 @@
             <div id="movieRecapPanel" class="recap-work-panel hidden">
               <h3>Movie Recap Studio</h3>
               <p>Video တင်ပြီး Recap အတွက် စာသား၊ Subtitle နဲ့ Voiceover ပြင်ဆင်ရန်။ အလိုအလျောက် AI processing အတွက် API ချိတ်ဆက်မှုလိုအပ်ပါတယ်။</p>
-              <label class="recap-field-label" for="recapVideoFile">Video file</label><input id="recapVideoFile" type="file" accept="video/*" class="recap-file-input">
+              <label class="recap-field-label" for="recapVideoFile">Video file</label><input id="recapVideoFile" type="file" accept="video/*" class="recap-file-input"><video id="recapVideoPreview" controls playsinline class="recap-video-preview" hidden></video>
               <label class="recap-field-label" for="recapLanguage">Subtitle / Translation language</label><select id="recapLanguage" class="recap-field"><option value="my">မြန်မာ</option><option value="en">English</option><option value="th">ไทย</option><option value="zh">中文</option></select>
               <label class="recap-field-label" for="recapScript">Recap script / subtitle text</label><textarea id="recapScript" class="recap-field" rows="4" placeholder="Recap စာသား သို့မဟုတ် Subtitle စာသား ထည့်ပါ..."></textarea>
               <div class="recap-checks"><label><input type="checkbox" id="recapOverlay"> Overlay</label><label><input type="checkbox" id="recapFreeze"> Freeze frame</label><label><input type="checkbox" id="recapSubtitle" checked> Subtitle</label></div>
-              <button type="button" class="primary-btn" id="prepareRecapBtn">Prepare recap</button><p class="recap-status" id="recapStatus" role="status">API မချိတ်ဆက်ရသေးပါ — လက်ရှိမှာ file ရွေးခြင်းနှင့် script ပြင်ဆင်ခြင်း UI သာ အလုပ်လုပ်ပါတယ်။</p>
+              <button type="button" class="primary-btn" id="prepareRecapBtn">Prepare recap + Myanmar voice</button><button type="button" class="primary-btn" id="exportRecapVideoBtn" hidden>Export recap video</button><a id="recapVideoDownload" class="primary-btn" hidden download="james-recap-video.webm">Download recap video</a><p class="recap-status" id="recapStatus" role="status">Video ကိုရွေးပြီး recap script/subtitle စာသားထည့်ပါ။ Prepare လုပ်လျှင် AI recap နှင့် ElevenLabs အသံထုတ်ပြီး Export လုပ်နိုင်ပါမယ်။</p>
             </div>
             <button type="button" class="recap-tool-card" id="openVoiceClone">
               <span class="recap-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg></span>
@@ -191,7 +191,7 @@
               <button type="button" class="primary-btn" id="prepareVoiceBtn">Prepare voiceover</button><p class="recap-status" id="voiceStatus" role="status">API မချိတ်ဆက်ရသေးပါ — အသံထုတ်လုပ်မှုကို မလုပ်ဆောင်နိုင်သေးပါ။</p>
             </div>
             <div class="recap-benefits"><h3>James AI မှာ အသုံးပြုနိုင်မယ့် Tools</h3><ul><li>AI Voice Clone & Text-to-Speech (TTS)</li><li>Subtitle ဖန်တီးခြင်းနှင့် ဘာသာပြန်ခြင်း</li><li>ဖုန်း၊ PC၊ Laptop များတွင် အသုံးပြုနိုင်ရန် Responsive UI</li><li>TikTok နှင့် YouTube အတွက် Export workflow — output quality သည် source video နှင့် API ပေါ်မူတည်သည်</li></ul></div>
-            <p class="recap-disclaimer">မှတ်ချက် — ဒီအပိုင်းက UI အခြေခံဖြစ်ပါတယ်။ တကယ့် AI recap, voice clone, subtitle generation နဲ့ export လုပ်ဆောင်ချက်များအတွက် backend/API ချိတ်ဆက်မှုကို သီးခြားတပ်ဆင်ရပါမယ်။</p>
+            <p class="recap-disclaimer">မှတ်ချက် — AI recap အတွက် transcript/subtitle စာသားလိုအပ်ပါတယ်။ Export သည် browser က WebM video ထုတ်ပေးပြီး video ပုံရိပ်ပေါ်တွင် recap subtitle နှင့် ElevenLabs voiceover ကိုပေါင်းထည့်ပေးပါမယ်။ Browser က MediaRecorder မထောက်ပံ့ပါက export မရနိုင်ပါ။</p>
           </div>
         </section>
 
