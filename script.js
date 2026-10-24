@@ -1007,131 +1007,128 @@ window.addEventListener("load", () => {
 initAuthentication();
 
 
-// James Recap + ElevenLabs voiceover + browser video export
+// James Recap + ElevenLabs voiceover integration
 function setupRecapUI() {
   const moviePanel = document.querySelector('#movieRecapPanel');
   const voicePanel = document.querySelector('#voiceClonePanel');
-  const videoInput = document.querySelector('#recapVideoFile');
-  const video = document.querySelector('#recapVideoPreview');
-  const status = document.querySelector('#recapStatus');
-  const prepareBtn = document.querySelector('#prepareRecapBtn');
-  const exportBtn = document.querySelector('#exportRecapVideoBtn');
-  const download = document.querySelector('#recapVideoDownload');
-  let videoUrl = '', voiceUrl = '', voiceAudio = null, recapText = '', audioContext = null, audioSource = null;
-
   document.querySelector('#openMovieRecap')?.addEventListener('click', () => moviePanel?.classList.toggle('hidden'));
   document.querySelector('#openVoiceClone')?.addEventListener('click', () => voicePanel?.classList.toggle('hidden'));
-  videoInput?.addEventListener('change', e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
-    videoUrl = URL.createObjectURL(file);
-    video.src = videoUrl; video.hidden = false; video.load();
-    exportBtn.hidden = true; download.hidden = true;
-    if (status) status.textContent = `Video ရွေးပြီးပါပြီ: ${file.name}. Transcript/subtitle စာသားထည့်ပြီး Prepare recap ကိုနှိပ်ပါ။`;
+
+  document.querySelector('#recapVideoFile')?.addEventListener('change', e => {
+    const f = e.target.files?.[0], status = document.querySelector('#recapStatus');
+    if (f && status) status.textContent = `ရွေးထားသော video: ${f.name}. AI recap အတွက် transcript/subtitle စာသားကို ထည့်ပေးပါ။`;
   });
   document.querySelector('#voiceSampleFile')?.addEventListener('change', e => {
-    const f = e.target.files?.[0], s = document.querySelector('#voiceStatus');
-    if (f && s) s.textContent = `ရွေးထားသော audio: ${f.name}. လက်ရှိ API သည် Render တွင်သတ်မှတ်ထားသော ElevenLabs Voice ID ကို အသုံးပြုပါမယ်။`;
+    const f = e.target.files?.[0], status = document.querySelector('#voiceStatus');
+    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name}. ဒီ endpoint က Render မှာ သတ်မှတ်ထားတဲ့ ElevenLabs Voice ID ကို အသုံးပြုပါမယ်။`;
   });
 
-  prepareBtn?.addEventListener('click', async () => {
+  document.querySelector('#prepareRecapBtn')?.addEventListener('click', async () => {
     const script = document.querySelector('#recapScript')?.value.trim();
-    if (!videoInput?.files?.[0]) { if(status) status.textContent = 'အရင်ဆုံး Video file ရွေးပေးပါ။'; return; }
-    if (!script) { if(status) status.textContent = 'Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်နားထောင်ပြီး transcript ထုတ်ခြင်း မပါသေးပါ။'; return; }
-    prepareBtn.disabled = true; exportBtn.hidden = true; download.hidden = true;
+    const status = document.querySelector('#recapStatus');
+    if (!script) { if(status) status.textContent = 'Recap/Subtitle စာသား ထည့်ပေးပါ။ Video file ကို တိုက်ရိုက် decode မလုပ်နိုင်သေးပါ။'; return; }
+    const btn = document.querySelector('#prepareRecapBtn');
+    btn.disabled = true; if(status) status.textContent = 'OpenAI နဲ့ recap ပြင်ဆင်နေပါတယ်…';
     try {
-      if(status) status.textContent = 'OpenAI နဲ့ recap စာသားပြင်ဆင်နေပါတယ်…';
       const r = await fetch(apiUrl('/api/recap'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({script})});
       const d = await r.json().catch(()=>({}));
       if(!r.ok || !d.ok) throw new Error(d.error || 'Recap မအောင်မြင်ပါ။');
-      recapText = d.recap;
-      document.querySelector('#recapScript').value = recapText;
-      if(status) status.textContent = 'ElevenLabs မြန်မာ voiceover ထုတ်လုပ်နေပါတယ်…';
-      const vr = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text:recapText})});
-      const vd = await vr.json().catch(()=>({}));
-      if(!vr.ok || !vd.ok) throw new Error(vd.error || 'ElevenLabs voiceover မအောင်မြင်ပါ။');
-      if (voiceUrl) URL.revokeObjectURL(voiceUrl);
-      const audioBlob = await (await fetch(vd.audio)).blob();
-      voiceUrl = URL.createObjectURL(audioBlob);
-      voiceAudio = new Audio(voiceUrl); voiceAudio.preload = 'auto';
-      if(status) status.textContent = 'Recap စာသားနှင့် အသံအဆင်သင့်ဖြစ်ပါပြီ။ Export recap video ကိုနှိပ်ပါ။';
-      exportBtn.hidden = false;
+      document.querySelector('#recapScript').value = d.recap;
+      if(status) status.textContent = 'Recap အောင်မြင်ပါပြီ။ စာသားကို ပြင်ဆင်နိုင်ပါတယ်။';
     } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
-    finally { prepareBtn.disabled = false; }
-  });
-
-  exportBtn?.addEventListener('click', async () => {
-    if (!video.src || !voiceUrl) { if(status) status.textContent = 'Video နှင့် voiceover ကို အရင် Prepare လုပ်ပါ။'; return; }
-    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { if(status) status.textContent = 'ဒီ Browser မှာ video export မထောက်ပံ့ပါ။ Chrome/Edge နောက်ဆုံးဗားရှင်းကို စမ်းပါ။'; return; }
-    exportBtn.disabled = true; download.hidden = true;
-    let recorder, raf = 0, stopped = false;
-    try {
-      const w = Math.min(video.videoWidth || 1280, 1280);
-      const h = Math.max(2, Math.round(w * ((video.videoHeight || 720) / (video.videoWidth || 1280))));
-      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      const stream = canvas.captureStream(25);
-      audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-      if (!audioSource) { audioSource = audioContext.createMediaElementSource(voiceAudio); }
-      const destination = audioContext.createMediaStreamDestination();
-      audioSource.connect(destination); audioSource.connect(audioContext.destination);
-      destination.stream.getAudioTracks().forEach(t => stream.addTrack(t));
-      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
-      recorder = new MediaRecorder(stream, {mimeType:mime});
-      const chunks = [];
-      recorder.ondataavailable = e => { if(e.data?.size) chunks.push(e.data); };
-      recorder.onerror = () => { if(status) status.textContent = 'Video export မအောင်မြင်ပါ။ Browser permission/codec ကိုစစ်ပါ။'; };
-      const draw = () => {
-        if (stopped) return;
-        ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h);
-        if (video.readyState >= 2) ctx.drawImage(video,0,0,w,h);
-        if (document.querySelector('#recapSubtitle')?.checked) {
-          const lines = recapText.split(/\s+/); const maxChars = Math.max(18, Math.floor(w/15)); const wrapped=[]; let line='';
-          for(const word of lines){ if((line+' '+word).trim().length>maxChars){if(line) wrapped.push(line);line=word;}else line=(line+' '+word).trim(); }
-          if(line) wrapped.push(line);
-          const shown=wrapped.slice(0,4); const fs=Math.max(16,Math.round(w/34));
-          ctx.font=`bold ${fs}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
-          const boxH=(shown.length*fs*1.35)+fs; ctx.fillStyle='rgba(0,0,0,.68)'; ctx.fillRect(0,h-boxH-10,w,boxH+10);
-          ctx.fillStyle='#fff'; shown.forEach((line,i)=>ctx.fillText(line,w/2,h-boxH/2+ i*fs*1.35+fs*.2, w-30));
-        }
-        raf=requestAnimationFrame(draw);
-      };
-      await audioContext.resume();
-      video.currentTime = 0; voiceAudio.currentTime = 0;
-      await new Promise(resolve => { if(video.readyState >= 2) resolve(); else video.addEventListener('loadeddata',resolve,{once:true}); });
-      draw(); recorder.start(250);
-      if(status) status.textContent = 'Video ကို voiceover နဲ့ပေါင်းပြီး export လုပ်နေပါတယ်… ဒီစာမျက်နှာကို မပိတ်ပါနဲ့။';
-      await Promise.all([video.play(), voiceAudio.play()]);
-      await new Promise(resolve => { voiceAudio.onended = resolve; video.onerror = resolve; });
-      stopped = true; cancelAnimationFrame(raf);
-      await new Promise(resolve => { recorder.onstop=resolve; recorder.stop(); });
-      const blob = new Blob(chunks,{type:'video/webm'});
-      if (!blob.size) throw new Error('Export ဖိုင်အလွတ်ဖြစ်နေပါတယ်။ ထပ်စမ်းပါ။');
-      if (download.dataset.url) URL.revokeObjectURL(download.dataset.url);
-      const url = URL.createObjectURL(blob); download.href=url; download.dataset.url=url; download.hidden=false;
-      if(status) status.textContent = 'Video export အောင်မြင်ပါပြီ။ Download recap video ကိုနှိပ်ပါ။ (WebM format)';
-    } catch(e) {
-      if(status) status.textContent = `Export error: ${e.message || 'Browser က video/audio export ကို ခွင့်မပြုပါ။'}`;
-    } finally { stopped=true; cancelAnimationFrame(raf); exportBtn.disabled=false; try{video.pause();voiceAudio?.pause();}catch{} }
+    finally { btn.disabled = false; }
   });
 
   document.querySelector('#prepareVoiceBtn')?.addEventListener('click', async () => {
     const text = document.querySelector('#voiceText')?.value.trim();
-    const s = document.querySelector('#voiceStatus');
+    const status = document.querySelector('#voiceStatus');
+    if (!text) { if(status) status.textContent = 'ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။'; return; }
     const btn = document.querySelector('#prepareVoiceBtn');
-    if (!text) { if(s) s.textContent='ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။'; return; }
-    btn.disabled=true; if(s) s.textContent='ElevenLabs က အသံဖန်တီးနေပါတယ်…';
+    btn.disabled = true; if(status) status.textContent = 'ElevenLabs က အသံဖန်တီးနေပါတယ်…';
     try {
-      const r=await fetch(apiUrl('/api/voice'),{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text})});
-      const d=await r.json().catch(()=>({})); if(!r.ok||!d.ok) throw new Error(d.error||'Voiceover မအောင်မြင်ပါ။');
-      let player=document.querySelector('#jamesVoiceAudio');
-      if(!player){player=document.createElement('audio');player.id='jamesVoiceAudio';player.controls=true;player.style.display='block';player.style.width='100%';btn.insertAdjacentElement('afterend',player);}
-      player.src=d.audio;
-      let link=document.querySelector('#jamesVoiceDownload');
-      if(!link){link=document.createElement('a');link.id='jamesVoiceDownload';link.textContent='Download voiceover (MP3)';link.className='primary-btn';link.style.display='inline-block';player.insertAdjacentElement('afterend',link);}
-      link.href=d.audio;link.download='james-voiceover.mp3';if(s)s.textContent='အသံဖန်တီးပြီးပါပြီ။ နားထောင်ပြီး MP3 download လုပ်နိုင်ပါတယ်။';
-    } catch(e){if(s)s.textContent=`Error: ${e.message}`;} finally{btn.disabled=false;}
+      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
+      let player = document.querySelector('#jamesVoiceAudio');
+      if(!player) { player = document.createElement('audio'); player.id='jamesVoiceAudio'; player.controls=true; player.style.display='block'; player.style.width='100%'; btn.insertAdjacentElement('afterend',player); }
+      player.src = d.audio;
+      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။';
+      let link = document.querySelector('#jamesVoiceDownload');
+      if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
+      link.href=d.audio; link.download='james-voiceover.mp3';
+    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+    finally { btn.disabled = false; }
   });
 }
 setupRecapUI();
+
+
+// Recap video export: browser-side MP4/WebM capture with optional subtitle overlay.
+// Uses the selected source video and creates a downloadable WebM without changing other features.
+function setupRecapVideoExport() {
+  const btn = document.querySelector('#exportRecapVideoBtn');
+  if (!btn || btn.dataset.bound === '1') return;
+  btn.dataset.bound = '1';
+  btn.addEventListener('click', async () => {
+    const file = document.querySelector('#recapVideoFile')?.files?.[0];
+    const script = document.querySelector('#recapScript')?.value?.trim() || '';
+    const status = document.querySelector('#recapStatus');
+    const setStatus = (s) => { if (status) status.textContent = s; };
+    if (!file) { setStatus('Video file ကို အရင်ရွေးပေးပါ။'); return; }
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      setStatus('ဒီ Browser မှာ Video Export မထောက်ပံ့ပါ။ Chrome သို့မဟုတ် Edge နဲ့ စမ်းပါ။'); return;
+    }
+    btn.disabled = true;
+    let video, canvas, ctx, raf, recorder, stream, chunks = [];
+    try {
+      setStatus('Video ကို ပြင်ဆင်နေပါတယ်…');
+      video = document.createElement('video');
+      video.muted = true; video.playsInline = true; video.preload = 'auto';
+      video.src = URL.createObjectURL(file);
+      await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=()=>reject(new Error('Video ဖိုင်ကို ဖတ်မရပါ။'));});
+      canvas = document.createElement('canvas');
+      canvas.width = Math.min(video.videoWidth || 1280, 1280);
+      canvas.height = Math.round(canvas.width * (video.videoHeight || 720) / (video.videoWidth || 1280));
+      ctx = canvas.getContext('2d');
+      const draw = () => {
+        if (!video || !ctx) return;
+        ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        if (document.querySelector('#recapSubtitle')?.checked && script) {
+          const lines = [];
+          const words = script.replace(/\s+/g,' ').split(' ');
+          let line = '';
+          for (const word of words) { const next = line ? line+' '+word : word;
+            if (ctx.measureText(next).width > canvas.width*0.84 && line) { lines.push(line); line=word; } else line=next; }
+          if (line) lines.push(line);
+          const shown = lines.slice(0,3);
+          ctx.fillStyle='rgba(0,0,0,.68)'; ctx.fillRect(0,canvas.height-canvas.height*.19,canvas.width,canvas.height*.19);
+          ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.font=`${Math.max(18,Math.round(canvas.width*.035))}px sans-serif`;
+          shown.forEach((t,i)=>ctx.fillText(t,canvas.width/2,canvas.height-canvas.height*.13+i*Math.max(22,canvas.height*.045),canvas.width*.92));
+        }
+        raf = requestAnimationFrame(draw);
+      };
+      stream = canvas.captureStream(25);
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
+        (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
+      recorder = new MediaRecorder(stream,{mimeType:mime});
+      recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error('Video export မအောင်မြင်ပါ။'));});
+      draw(); recorder.start(1000);
+      await video.play();
+      setStatus('Video export လုပ်နေပါတယ်… Video ပြီးဆုံးတဲ့အထိ စောင့်ပါ။');
+      await new Promise(resolve=>{ video.onended=resolve; video.onerror=resolve; });
+      recorder.stop(); await stopped;
+      const blob = new Blob(chunks,{type:'video/webm'});
+      if (!blob.size) throw new Error('Video ဖိုင်မထွက်လာပါ။ ထပ်စမ်းကြည့်ပါ။');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='james-ai-myanmar-recap.webm';
+      document.body.appendChild(a); a.click(); a.remove();
+      setStatus('Video Export ပြီးပါပြီ။ james-ai-myanmar-recap.webm ကို Download လုပ်နေပါတယ်။');
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    } catch (e) { setStatus('Export မအောင်မြင်ပါ: '+(e?.message || 'Browser ခွင့်ပြုချက်/Video format ကို စစ်ပါ။')); }
+    finally { if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t=>t.stop()); if(video?.src) URL.revokeObjectURL(video.src); btn.disabled=false; }
+  });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupRecapVideoExport);
+else setupRecapVideoExport();
