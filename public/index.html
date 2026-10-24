@@ -178,7 +178,8 @@
               <label class="recap-field-label" for="recapScript">Recap script / subtitle text</label><textarea id="recapScript" class="recap-field" rows="4" placeholder="Recap စာသား သို့မဟုတ် Subtitle စာသား ထည့်ပါ..."></textarea>
               <div class="recap-checks"><label><input type="checkbox" id="recapOverlay"> Overlay</label><label><input type="checkbox" id="recapFreeze"> Freeze frame</label><label><input type="checkbox" id="recapSubtitle" checked> Subtitle</label></div>
               <button type="button" class="primary-btn" id="prepareRecapBtn">Prepare recap</button>
-              <button type="button" class="primary-btn" id="exportRecapVideoBtn">Export recap video</button><p class="recap-status" id="recapStatus" role="status">API မချိတ်ဆက်ရသေးပါ — လက်ရှိမှာ file ရွေးခြင်းနှင့် script ပြင်ဆင်ခြင်း UI သာ အလုပ်လုပ်ပါတယ်။</p>
+              <button type="button" class="primary-btn" id="exportRecapVideoBtn">Export recap video</button>
+<div id="recapExportPreview" class="recap-export-preview" hidden style="margin-top:16px;padding:12px;border:1px solid #343746;border-radius:16px;background:#080b12"><h3 style="margin:0 0 10px">Myanmar Recap Video</h3><video id="recapExportPlayer" controls playsinline style="width:100%;max-height:65vh;border-radius:12px;background:#000"></video><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><a id="recapExportDownload" class="primary-btn" download="james-ai-myanmar-recap.webm">Download video</a></div></div><p class="recap-status" id="recapStatus" role="status">API မချိတ်ဆက်ရသေးပါ — လက်ရှိမှာ file ရွေးခြင်းနှင့် script ပြင်ဆင်ခြင်း UI သာ အလုပ်လုပ်ပါတယ်။</p>
             </div>
             <button type="button" class="recap-tool-card" id="openVoiceClone">
               <span class="recap-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg></span>
