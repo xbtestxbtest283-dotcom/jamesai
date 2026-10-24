@@ -1079,7 +1079,7 @@ function setupRecapVideoExport() {
       setStatus('ဒီ Browser မှာ Video Export မထောက်ပံ့ပါ။ Chrome သို့မဟုတ် Edge နဲ့ စမ်းပါ။'); return;
     }
     btn.disabled = true;
-    let video, canvas, ctx, raf, recorder, stream, chunks = [];
+    let video, canvas, ctx, raf, recorder, stream, voiceAudio, voiceStream, chunks = [];
     try {
       setStatus('Video ကို ပြင်ဆင်နေပါတယ်…');
       video = document.createElement('video');
@@ -1109,15 +1109,47 @@ function setupRecapVideoExport() {
         raf = requestAnimationFrame(draw);
       };
       stream = canvas.captureStream(25);
+      const voiceUrl = window.jamesRecapVoiceUrl || document.querySelector('#jamesRecapVoiceAudio')?.src || '';
+      if (voiceUrl) {
+        voiceAudio = new Audio();
+        voiceAudio.src = voiceUrl;
+        voiceAudio.preload = 'auto';
+        voiceAudio.crossOrigin = 'anonymous';
+        await new Promise((resolve,reject) => {
+          voiceAudio.oncanplaythrough = resolve;
+          voiceAudio.onerror = () => reject(new Error('မြန်မာအသံဖိုင်ကို ဖတ်မရပါ။ Prepare recap + Myanmar voice ကို အရင်နှိပ်ပါ။'));
+          voiceAudio.load();
+          setTimeout(() => resolve(), 8000);
+        });
+        if (voiceAudio.captureStream) voiceStream = voiceAudio.captureStream();
+        else if (voiceAudio.mozCaptureStream) voiceStream = voiceAudio.mozCaptureStream();
+        if (voiceStream) voiceStream.getAudioTracks().forEach(track => stream.addTrack(track));
+      }
       const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
         (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
       recorder = new MediaRecorder(stream,{mimeType:mime});
       recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
       const stopped = new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error('Video export မအောင်မြင်ပါ။'));});
       draw(); recorder.start(1000);
-      await video.play();
-      setStatus('Video export လုပ်နေပါတယ်… Video ပြီးဆုံးတဲ့အထိ စောင့်ပါ။');
-      await new Promise(resolve=>{ video.onended=resolve; video.onerror=resolve; });
+      if (voiceAudio) {
+        voiceAudio.currentTime = 0;
+        const voicePlay = voiceAudio.play().catch(()=>{});
+        await video.play();
+        setStatus('မြန်မာအသံ + Subtitle ပါတဲ့ Video ကို Export လုပ်နေပါတယ်…');
+        await new Promise(resolve => {
+          let done = false;
+          const finish = () => { if (!done) { done=true; resolve(); } };
+          video.onended = finish; video.onerror = finish;
+          voiceAudio.onended = finish;
+          // Do not stop before the video ends; if voice is shorter, keep video running.
+          if (voiceAudio.duration && video.duration && voiceAudio.duration >= video.duration) voiceAudio.onended = finish;
+        });
+        voiceAudio.pause();
+      } else {
+        await video.play();
+        setStatus('အသံမတွေ့ပါ။ Subtitle ပါတဲ့ Video ကို Export လုပ်နေပါတယ်…');
+        await new Promise(resolve=>{ video.onended=resolve; video.onerror=resolve; });
+      }
       recorder.stop(); await stopped;
       const blob = new Blob(chunks,{type:'video/webm'});
       if (!blob.size) throw new Error('Video ဖိုင်မထွက်လာပါ။ ထပ်စမ်းကြည့်ပါ။');
@@ -1138,7 +1170,7 @@ function setupRecapVideoExport() {
       }
       
     } catch (e) { setStatus('Export မအောင်မြင်ပါ: '+(e?.message || 'Browser ခွင့်ပြုချက်/Video format ကို စစ်ပါ။')); }
-    finally { if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t=>t.stop()); if(video?.src) URL.revokeObjectURL(video.src); btn.disabled=false; }
+    finally { if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t=>t.stop()); if (voiceStream) voiceStream.getTracks().forEach(t=>t.stop()); if (voiceAudio) { voiceAudio.pause(); voiceAudio.src=''; } if(video?.src) URL.revokeObjectURL(video.src); btn.disabled=false; }
   });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupRecapVideoExport);
