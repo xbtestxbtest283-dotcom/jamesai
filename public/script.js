@@ -1030,7 +1030,7 @@ function setupRecapUI() {
     const btn = document.querySelector('#prepareRecapBtn');
     btn.disabled = true; if(status) status.textContent = 'OpenAI နဲ့ recap ပြင်ဆင်နေပါတယ်…';
     try {
-      const r = await fetch(apiUrl('/api/recap'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({script})});
+      const r = await fetch(apiUrl('/api/recap'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({script, language:document.querySelector('#recapLanguage')?.value || 'my'})});
       const d = await r.json().catch(()=>({}));
       if(!r.ok || !d.ok) throw new Error(d.error || 'Recap မအောင်မြင်ပါ။');
       document.querySelector('#recapScript').value = d.recap;
@@ -1044,7 +1044,7 @@ function setupRecapUI() {
     const status = document.querySelector('#voiceStatus');
     if (!text) { if(status) status.textContent = 'ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။'; return; }
     const btn = document.querySelector('#prepareVoiceBtn');
-    btn.disabled = true; if(status) status.textContent = 'ElevenLabs က အသံဖန်တီးနေပါတယ်…';
+    btn.disabled = true; if(status) status.textContent = 'ElevenLabs v3 က မြန်မာအသံ ဖန်တီးနေပါတယ်…';
     try {
       const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text})});
       const d = await r.json().catch(()=>({}));
@@ -1111,7 +1111,7 @@ function setupRecapVideoExport() {
       stream = canvas.captureStream(25);
       let voiceUrl = window.jamesRecapVoiceUrl || document.querySelector('#jamesRecapVoiceAudio')?.src || '';
       if (!voiceUrl && script) {
-        setStatus('ElevenLabs က မြန်မာအသံ ဖန်တီးနေပါတယ်…');
+        setStatus('ElevenLabs v3 က မြန်မာအသံ ဖန်တီးနေပါတယ်…');
         const vr = await fetch(apiUrl('/api/voice'), {
           method:'POST',
           headers:authHeaders({'Content-Type':'application/json'}),
