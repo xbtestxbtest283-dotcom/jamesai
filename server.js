@@ -31,7 +31,17 @@ const apiKey = String(process.env.OPENAI_API_KEY || "")
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const elevenLabsApiKey = String(process.env.ELEVENLABS_API_KEY || "").trim().replace(/^[\'"]|[\'"]$/g, "");
-const elevenLabsVoiceId = String(process.env.ELEVENLABS_VOICE_ID || "").trim();
+const maleVoiceId = String(
+  process.env.ELEVENLABS_MALE_VOICE_ID || ""
+).trim();
+
+const femaleVoiceId = String(
+  process.env.ELEVENLABS_FEMALE_VOICE_ID || ""
+).trim();
+
+const defaultVoiceId = String(
+  process.env.ELEVENLABS_VOICE_ID || ""
+).trim();
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
 const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
