@@ -639,45 +639,49 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
   }
 });
 
-// ElevenLabs v3 TTS supports Burmese (my). Set ELEVENLABS_VOICE_ID to a voice available to your account.
+// Burmese/English TTS. The selected voice must itself support the requested language.
 app.post("/api/voice", requireGoogleLogin, async (req, res) => {
   try {
-    if (!elevenLabsApiKey) return res.status(500).json({ok:false,error:"ELEVENLABS_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။"});
+    if (!elevenLabsApiKey) {
+      return res.status(500).json({ ok: false, error: "ELEVENLABS_API_KEY မတွေ့ပါ။ Hosting Environment ကိုစစ်ပါ။" });
+    }
+
     const text = String(req.body?.text || "").trim();
-    const maleVoiceId = String(
-  process.env.ELEVENLABS_MALE_VOICE_ID || ""
-).trim();
+    const language = String(req.body?.language || "my").trim().toLowerCase() === "en" ? "en" : "my";
+    const voiceId = String(
+      (req.body?.voice === "male" ? process.env.ELEVENLABS_MALE_VOICE_ID : "") ||
+      (req.body?.voice === "female" ? process.env.ELEVENLABS_FEMALE_VOICE_ID : "") ||
+      process.env.ELEVENLABS_VOICE_ID ||
+      process.env.ELEVENLABS_FEMALE_VOICE_ID ||
+      process.env.ELEVENLABS_MALE_VOICE_ID ||
+      ""
+    ).trim();
 
-const femaleVoiceId = String(
-  process.env.ELEVENLABS_FEMALE_VOICE_ID || ""
-).trim();
+    if (!text) return res.status(400).json({ ok: false, error: "ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။" });
+    if (!voiceId) return res.status(400).json({ ok: false, error: "ELEVENLABS_VOICE_ID (မြန်မာစာဖတ်နိုင်သော Voice ID) ကို Hosting Environment မှာ ထည့်ပါ။" });
+    if (text.length > 5000) return res.status(413).json({ ok: false, error: "စာသားသည် 5,000 characters ထက် မကျော်ရပါ။" });
 
-const voiceId = String(
-  process.env.ELEVENLABS_VOICE_ID ||
-  femaleVoiceId ||
-  maleVoiceId ||
-  ""
-).trim();
-
-const elevenLabsVoiceId = voiceId;
-    if (!text) return res.status(400).json({ok:false,error:"ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။"});
-    if (!voiceId) return res.status(400).json({ok:false,error:"ELEVENLABS_VOICE_ID ကို Render Environment မှာ ထည့်ပေးပါ။"});
-    if (text.length > 5000) return res.status(413).json({ok:false,error:"စာသားသည် 5,000 characters ထက် မကျော်ရပါ။"});
     const ttsModel = process.env.ELEVENLABS_MODEL || "eleven_v3";
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
-      method:"POST",
-      headers:{"xi-api-key":elevenLabsApiKey,"Content-Type":"application/json","Accept":"audio/mpeg"},
-      body:JSON.stringify({text,model_id:ttsModel,voice_settings:{stability:0.5,similarity_boost:0.75}})
+      method: "POST",
+      headers: { "xi-api-key": elevenLabsApiKey, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+      body: JSON.stringify({
+        text,
+        model_id: ttsModel,
+        language_code: language,
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      })
     });
+
     if (!response.ok) {
-      const detail = await response.text().catch(()=> "");
-      return res.status(response.status).json({ok:false,error:`ElevenLabs error (${response.status}): ${detail.slice(0,400)}`});
+      const detail = await response.text().catch(() => "");
+      return res.status(response.status).json({ ok: false, error: `ElevenLabs error (${response.status}): ${detail.slice(0, 400)}` });
     }
     const audio = Buffer.from(await response.arrayBuffer());
-    res.json({ok:true,audio:`data:audio/mpeg;base64,${audio.toString("base64")}`});
-  } catch(error) {
-    console.error("VOICE ERROR:",error);
-    res.status(500).json({ok:false,error:String(error?.message || "Voice generation error")});
+    res.json({ ok: true, audio: `data:audio/mpeg;base64,${audio.toString("base64")}` });
+  } catch (error) {
+    console.error("VOICE ERROR:", error);
+    res.status(500).json({ ok: false, error: String(error?.message || "Voice generation error") });
   }
 });
 
