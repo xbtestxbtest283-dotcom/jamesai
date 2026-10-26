@@ -667,7 +667,7 @@ const elevenLabsVoiceId = voiceId;
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
       method:"POST",
       headers:{"xi-api-key":elevenLabsApiKey,"Content-Type":"application/json","Accept":"audio/mpeg"},
-      body:JSON.stringify({text,model_id:ttsModel,language_code:"my",voice_settings:{stability:0.5,similarity_boost:0.75}})
+      body:JSON.stringify({text,model_id:ttsModel,voice_settings:{stability:0.5,similarity_boost:0.75}})
     });
     if (!response.ok) {
       const detail = await response.text().catch(()=> "");
