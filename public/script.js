@@ -1046,7 +1046,7 @@ function setupRecapUI() {
     const btn = document.querySelector('#prepareVoiceBtn');
     btn.disabled = true; if(status) status.textContent = 'ElevenLabs v3 က မြန်မာအသံ ဖန်တီးနေပါတယ်…';
     try {
-      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text})});
+      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text, language:document.querySelector('#voiceLanguage')?.value || 'my'})});
       const d = await r.json().catch(()=>({}));
       if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
       let player = document.querySelector('#jamesVoiceAudio');
