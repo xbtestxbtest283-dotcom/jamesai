@@ -1109,7 +1109,27 @@ function setupRecapVideoExport() {
         raf = requestAnimationFrame(draw);
       };
       stream = canvas.captureStream(25);
-      const voiceUrl = window.jamesRecapVoiceUrl || document.querySelector('#jamesRecapVoiceAudio')?.src || '';
+      let voiceUrl = window.jamesRecapVoiceUrl || document.querySelector('#jamesRecapVoiceAudio')?.src || '';
+      if (!voiceUrl && script) {
+        setStatus('ElevenLabs က မြန်မာအသံ ဖန်တီးနေပါတယ်…');
+        const vr = await fetch(apiUrl('/api/voice'), {
+          method:'POST',
+          headers:authHeaders({'Content-Type':'application/json'}),
+          body:JSON.stringify({text:script})
+        });
+        const vd = await vr.json().catch(()=>({}));
+        if (!vr.ok || !vd.ok || !vd.audio) throw new Error(vd.error || 'မြန်မာအသံ မထုတ်နိုင်ပါ။ ELEVENLABS_API_KEY နဲ့ ELEVENLABS_VOICE_ID ကို စစ်ပါ။');
+        voiceUrl = vd.audio;
+        window.jamesRecapVoiceUrl = voiceUrl;
+        let voicePlayer = document.querySelector('#jamesRecapVoiceAudio');
+        if (!voicePlayer) {
+          voicePlayer = document.createElement('audio');
+          voicePlayer.id='jamesRecapVoiceAudio'; voicePlayer.controls=true;
+          voicePlayer.style.display='block'; voicePlayer.style.width='100%'; voicePlayer.style.marginTop='10px';
+          btn.insertAdjacentElement('afterend', voicePlayer);
+        }
+        voicePlayer.src = voiceUrl;
+      }
       if (voiceUrl) {
         voiceAudio = new Audio();
         voiceAudio.src = voiceUrl;
@@ -1123,7 +1143,12 @@ function setupRecapVideoExport() {
         });
         if (voiceAudio.captureStream) voiceStream = voiceAudio.captureStream();
         else if (voiceAudio.mozCaptureStream) voiceStream = voiceAudio.mozCaptureStream();
-        if (voiceStream) voiceStream.getAudioTracks().forEach(track => stream.addTrack(track));
+        if (!voiceStream || !voiceStream.getAudioTracks().length) {
+          throw new Error('ဒီ Browser က Audio Capture မထောက်ပံ့ပါ။ Chrome ကို အသုံးပြုပြီး ပြန်စမ်းပါ။');
+        }
+        voiceStream.getAudioTracks().forEach(track => stream.addTrack(track));
+      } else {
+        throw new Error('Recap Script မရှိပါ။ Script ထည့်ပြီး Prepare recap ကို အရင်နှိပ်ပါ။');
       }
       const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
         (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
