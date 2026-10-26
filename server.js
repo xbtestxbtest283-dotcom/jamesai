@@ -644,7 +644,22 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
   try {
     if (!elevenLabsApiKey) return res.status(500).json({ok:false,error:"ELEVENLABS_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။"});
     const text = String(req.body?.text || "").trim();
-    const voiceId = String(req.body?.voiceId || elevenLabsVoiceId).trim();
+    const maleVoiceId = String(
+  process.env.ELEVENLABS_MALE_VOICE_ID || ""
+).trim();
+
+const femaleVoiceId = String(
+  process.env.ELEVENLABS_FEMALE_VOICE_ID || ""
+).trim();
+
+const voiceId = String(
+  process.env.ELEVENLABS_VOICE_ID ||
+  femaleVoiceId ||
+  maleVoiceId ||
+  ""
+).trim();
+
+const elevenLabsVoiceId = voiceId;
     if (!text) return res.status(400).json({ok:false,error:"ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။"});
     if (!voiceId) return res.status(400).json({ok:false,error:"ELEVENLABS_VOICE_ID ကို Render Environment မှာ ထည့်ပေးပါ။"});
     if (text.length > 5000) return res.status(413).json({ok:false,error:"စာသားသည် 5,000 characters ထက် မကျော်ရပါ။"});
