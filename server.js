@@ -607,13 +607,16 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
   try {
     if (!client) return res.status(500).json({ ok:false, error:"OPENAI_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။" });
     const source = String(req.body?.script || "").trim();
+    const language = String(req.body?.language || "my").trim().toLowerCase();
     if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
     if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
     const user = makeUser(req.googleUser);
     if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
     const response = await client.responses.create({
       model,
-      instructions: "You are James Recap. Create a concise, accurate video recap from the supplied transcript/subtitles. Keep key events in order, do not invent scenes. Reply in Burmese if source is Burmese. Output: Title, Recap, and optional subtitle-ready short lines.",
+      instructions: language === "en"
+        ? "You are James Recap. Create a concise, accurate video recap in English from the supplied transcript/subtitles. Keep key events in order, do not invent scenes. Output: Title, Recap, and optional subtitle-ready short lines."
+        : "သင်သည် James Recap ဖြစ်သည်။ ပေးထားသော ဇာတ်လမ်းစာသား/Subtitle ကို အခြေခံ၍ မြန်မာဘာသာဖြင့် သဘာဝကျပြီး နားလည်လွယ်သော Recap ရေးပါ။ ဖြစ်ရပ်များကို အစဉ်လိုက်ထားပြီး မရှိသောအဖြစ်အပျက်များ မတီထွင်ပါနှင့်။ ခေါင်းစဉ်၊ မြန်မာ Recap နှင့် လိုအပ်ပါက Subtitle အတွက် စာကြောင်းတိုများ ထုတ်ပေးပါ။",
       input: source
     });
     const recap = String(response.output_text || "").trim();
@@ -626,7 +629,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
   }
 });
 
-// ElevenLabs text-to-speech. Set ELEVENLABS_VOICE_ID in Render for an existing authorized voice.
+// ElevenLabs v3 TTS supports Burmese (my). Set ELEVENLABS_VOICE_ID to a voice available to your account.
 app.post("/api/voice", requireGoogleLogin, async (req, res) => {
   try {
     if (!elevenLabsApiKey) return res.status(500).json({ok:false,error:"ELEVENLABS_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။"});
@@ -635,10 +638,11 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
     if (!text) return res.status(400).json({ok:false,error:"ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။"});
     if (!voiceId) return res.status(400).json({ok:false,error:"ELEVENLABS_VOICE_ID ကို Render Environment မှာ ထည့်ပေးပါ။"});
     if (text.length > 5000) return res.status(413).json({ok:false,error:"စာသားသည် 5,000 characters ထက် မကျော်ရပါ။"});
+    const ttsModel = process.env.ELEVENLABS_MODEL || "eleven_v3";
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
       method:"POST",
       headers:{"xi-api-key":elevenLabsApiKey,"Content-Type":"application/json","Accept":"audio/mpeg"},
-      body:JSON.stringify({text,model_id:"eleven_multilingual_v2",voice_settings:{stability:0.5,similarity_boost:0.75}})
+      body:JSON.stringify({text,model_id:ttsModel,language_code:"my",voice_settings:{stability:0.5,similarity_boost:0.75}})
     });
     if (!response.ok) {
       const detail = await response.text().catch(()=> "");
