@@ -175,11 +175,14 @@ function saveUsers() {
 function nowMs() { return Date.now(); }
 const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 function makeUser(user) {
+  // Establish the clock before using it for credit resets; otherwise a valid
+  // Google login would throw a ReferenceError while initializing the account.
+  const now = nowMs();
   const existing = users[user.sub] || {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
     plan: "free", planStartedAt: null, planExpiresAt: null,
     messageCount: 0, imageCount: 0, windowStartedAt: null, freeResetAt: null,
-    pendingPurchase: null, dailyCredits: 3, dailyCreditsResetAt: nowMs() + QUOTA_WINDOW_MS, purchasedCredits: 0
+    pendingPurchase: null, dailyCredits: 3, dailyCreditsResetAt: now + QUOTA_WINDOW_MS, purchasedCredits: 0
   };
   existing.email = user.email; existing.name = user.name; existing.picture = user.picture;
   if (!Number.isFinite(Number(existing.dailyCredits))) existing.dailyCredits = 3;
@@ -187,7 +190,6 @@ function makeUser(user) {
   if (!existing.dailyCreditsResetAt || now >= Number(existing.dailyCreditsResetAt)) {
     existing.dailyCredits = 3; existing.dailyCreditsResetAt = now + QUOTA_WINDOW_MS;
   }
-  const now = nowMs();
   if (existing.plan !== "free" && existing.planExpiresAt && now >= existing.planExpiresAt) {
     // Paid plan has ended: return to Free and reset all paid-plan counters.
     existing.plan = "free"; existing.planStartedAt = null; existing.planExpiresAt = null;
