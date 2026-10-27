@@ -1,10 +1,16 @@
-JamesAI TTS patch (2026-10-27)
+James AI - Movie Recap voice selection patch
 
-- Replaced ElevenLabs-only /api/voice backend with edge-tts command-line generation.
-- Burmese voice mapping: female = my-MM-NilarNeural; male = my-MM-ThihaNeural.
-- English voice mapping: female = en-US-JennyNeural; male = en-US-GuyNeural.
-- Returns generated MP3 as the existing data:audio/mpeg;base64 response expected by the frontend.
-- Added requirements.txt and Render build installation for edge-tts.
-- No ElevenLabs API key is required.
+Changes:
+- Added Nilar (my-MM-NilarNeural) and Thiha (my-MM-ThihaNeural) selection in Movie Recap Studio.
+- Added speech rate choices (-5%, 0%, +5%); default is slightly slower for natural Burmese narration.
+- Movie Recap export now sends the selected recap voice and rate to /api/voice instead of using the separate Voice Clone panel selection.
+- Updated export status/error messages to refer to Edge TTS, not ElevenLabs.
+- Fixed an export timing issue where the recording could stop when narration ended before the source video. Export now waits for the source video to finish.
+- Applied matching UI changes to root and public copies.
 
-Limitations: edge-tts uses Microsoft Edge's online speech service through an unofficial client; availability, rate limits, and terms may change. Deployment/build and actual cloud audio generation should be tested after deploying.
+Validation:
+- `node --check server.js`
+- `node --check script.js`
+- `node --check public/script.js`
+
+Note: Live Edge TTS generation and browser video export require a deployed server with Python + edge-tts installed, internet access, and a browser supporting MediaRecorder/canvas capture. These live services were not exercised in this environment.

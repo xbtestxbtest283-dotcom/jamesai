@@ -639,6 +639,8 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
     const text = String(req.body?.text || "").trim();
     const language = String(req.body?.language || "my").trim().toLowerCase() === "en" ? "en" : "my";
     const gender = String(req.body?.voice || "female").trim().toLowerCase() === "male" ? "male" : "female";
+    const requestedRate = String(req.body?.rate || "-5%").trim();
+    const rate = ["-5%", "+0%", "+5%"].includes(requestedRate) ? requestedRate : "-5%";
 
     if (!text) return res.status(400).json({ ok: false, error: "ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။" });
     if (text.length > 5000) return res.status(413).json({ ok: false, error: "စာသားသည် 5,000 characters ထက် မကျော်ရပါ။" });
@@ -651,13 +653,13 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
     const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
 
     // Pass text as a CLI argument (no shell interpolation), avoiding command injection.
-    await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--text", text, "--write-media", outputPath], {
+    await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", text, "--write-media", outputPath], {
       timeout: 120000,
       maxBuffer: 2 * 1024 * 1024
     });
     const audio = await fs.promises.readFile(outputPath);
     if (!audio.length) throw new Error("TTS service returned an empty audio file.");
-    res.json({ ok: true, voice, audio: `data:audio/mpeg;base64,${audio.toString("base64")}` });
+    res.json({ ok: true, voice, rate, audio: `data:audio/mpeg;base64,${audio.toString("base64")}` });
   } catch (error) {
     console.error("VOICE ERROR:", error?.stderr || error);
     const detail = String(error?.stderr || error?.message || "Voice generation error").trim().slice(0, 500);
