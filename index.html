@@ -163,7 +163,7 @@
           <div class="recap-shell">
             <div class="recap-topline">
               <div class="recap-user"><span class="recap-avatar">J</span><strong>James Recap</strong></div>
-              <div class="recap-top-actions"><span class="recap-pill">Credit <b>∞</b></span><button type="button" class="recap-pill" data-view="plans">💳 Plans</button><span class="recap-profile">J</span></div>
+              <div class="recap-top-actions"><span class="recap-pill">Credit <b>∞</b></span><button type="button" class="recap-pill" id="refreshRecapCreditBtn" aria-label="Refresh Credit">↻ Refresh</button><button type="button" class="recap-pill" data-view="plans">💳 Plans</button><span class="recap-profile">J</span></div>
             </div>
             <div class="recap-hero"><h2>James <span>Recap</span></h2><p>သင့်အတွက် AI Video & Voice Tools</p></div>
             <button type="button" class="recap-tool-card" id="openMovieRecap">
@@ -195,6 +195,7 @@
               <label class="recap-field-label" for="voiceText">ဖတ်စေလိုသော စာသား</label><textarea id="voiceText" class="recap-field" rows="4" placeholder="အသံဖတ်စေလိုသော စာသား ရိုက်ပါ..."></textarea>
               <label class="recap-field-label" for="voiceLanguage">Language</label><select id="voiceLanguage" class="recap-field"><option value="my">မြန်မာ</option><option value="en">English</option></select>
               <label class="recap-field-label" for="voiceGender">အသံအမျိုးအစား</label><select id="voiceGender" class="recap-field"><option value="female">အမျိုးသမီး (Nilar)</option><option value="male">အမျိုးသား (Thiha)</option></select>
+              <p class="recap-status">အခမဲ့ Browser TTS သည် ဖုန်း/ကွန်ပျူတာတွင် မြန်မာအသံရှိမှ အလုပ်လုပ်ပါမည်။ MP3 download အတွက် API လိုအပ်နိုင်ပါသည်။</p>
               <button type="button" class="primary-btn" id="prepareVoiceBtn">Prepare voiceover</button><p class="recap-status" id="voiceStatus" role="status">Edge TTS ဖြင့် အသံထုတ်ရန် အဆင်သင့်ဖြစ်ပါပြီ။</p>
             </div>
             <div class="recap-benefits"><h3>James AI မှာ အသုံးပြုနိုင်မယ့် Tools</h3><ul><li>AI Voice Clone & Text-to-Speech (TTS)</li><li>Subtitle ဖန်တီးခြင်းနှင့် ဘာသာပြန်ခြင်း</li><li>ဖုန်း၊ PC၊ Laptop များတွင် အသုံးပြုနိုင်ရန် Responsive UI</li><li>TikTok နှင့် YouTube အတွက် Export workflow — output quality သည် source video နှင့် API ပေါ်မူတည်သည်</li></ul></div>
@@ -211,6 +212,8 @@
           <div class="tool-header"><div><h2><svg class="ui-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z"/></svg> Plans & Purchase</h2><p>လက်ရှိ plan၊ အသုံးပြုထားသည့် quota နဲ့ upgrade ကို ဒီမှာ စီမံနိုင်ပါတယ်။</p></div></div>
           <div id="usageCard" class="usage-card"></div>
           <div id="plansGrid" class="plans-grid"></div>
+          <div class="tool-header credit-pack-header"><div><h3>🎟️ Credit Packs</h3><p>နေ့စဉ် Free Credit 3 ခု ရရှိမည်။ အပို Credit ဝယ်ယူမှုကို Admin က အတည်ပြုပြီးမှ ထည့်ပေးမည်။</p></div></div>
+          <div id="creditBalance" class="usage-card"></div><div id="creditPacksGrid" class="plans-grid"></div>
           <div class="payment-help">Payment လုပ်ပြီးရင် order ID ကို သိမ်းထားပါ။ Payment provider အတည်ပြုပြီး plan ကို activate လုပ်နိုင်ပါတယ်။</div>
         </section>
 
