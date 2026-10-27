@@ -9,6 +9,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
+import { randomBytes } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -403,6 +404,23 @@ async function requireGoogleLogin(req, res, next) {
     });
   }
   req.googleUser = user;
+  // If Supabase is configured, refresh this account's latest shared record before
+  // checking credits. This prevents an instance's stale in-memory balance from
+  // incorrectly reporting "no credits" when another instance has the purchase.
+  if (supabase) {
+    try {
+      const { data: row, error } = await supabase
+        .from(SUPABASE_USERS_TABLE)
+        .select("user_data")
+        .eq("google_sub", user.sub)
+        .maybeSingle();
+      if (error) throw error;
+      if (row?.user_data && typeof row.user_data === "object") users[user.sub] = row.user_data;
+    } catch (error) {
+      console.error("USER CREDIT REFRESH ERROR:", error.message || error);
+      return res.status(503).json({ ok:false, error:"Account/Credit data ကို Cloud မှ မဖတ်နိုင်ပါ။ Render မှာ Supabase connection ကို စစ်ပါ။" });
+    }
+  }
   req.appUser = makeUser(user);
   next();
 }
@@ -634,6 +652,46 @@ Help with general questions, programming, study, translation, writing, math, exp
 
 
 
+// Completed exports stay on the server briefly. The phone streams the MP4 from
+// a download URL instead of buffering the entire output in a JavaScript Blob.
+const recapExportJobs = new Map();
+const RECAP_EXPORT_TTL_MS = 15 * 60 * 1000;
+function cleanupRecapExport(id) {
+  const job = recapExportJobs.get(id);
+  if (!job) return;
+  recapExportJobs.delete(id);
+  fs.promises.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
+}
+app.get("/api/recap/export/download/:id", async (req, res) => {
+  const job = recapExportJobs.get(String(req.params.id || ""));
+  if (!job || job.expiresAt < Date.now()) {
+    if (job) cleanupRecapExport(req.params.id);
+    return res.status(404).json({ ok:false, error:"Export ဖိုင် သက်တမ်းကုန်သွားပါပြီ။ Video ကို ပြန် Export လုပ်ပါ။" });
+  }
+  const preview = req.query.preview === "1";
+  const stat = await fs.promises.stat(job.outputPath).catch(() => null);
+  if (!stat?.isFile()) { cleanupRecapExport(req.params.id); return res.status(404).json({ ok:false, error:"Export ဖိုင် မတွေ့ပါ။ ပြန် Export လုပ်ပါ။" }); }
+  res.setHeader("Content-Type", "video/mp4");
+  res.setHeader("Content-Disposition", `${preview ? "inline" : "attachment"}; filename="james-ai-myanmar-recap.mp4"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Accept-Ranges", "bytes");
+  const range = req.headers.range;
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match) { res.status(416).end(); return; }
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
+    if (start > end || start >= stat.size) { res.status(416).setHeader("Content-Range", `bytes */${stat.size}`).end(); return; }
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
+    res.setHeader("Content-Length", String(end - start + 1));
+    fs.createReadStream(job.outputPath, { start, end }).on("error", () => { if (!res.headersSent) res.status(500).end(); }).pipe(res);
+    return;
+  }
+  res.setHeader("Content-Length", String(stat.size));
+  fs.createReadStream(job.outputPath).on("error", () => { if (!res.headersSent) res.status(500).end(); }).pipe(res);
+});
+
 // Server-side James Recap export. The phone uploads the source video; Render
 // generates Burmese narration and creates the MP4. Credit is charged only after
 // FFmpeg has successfully created a non-empty output file.
@@ -656,7 +714,7 @@ app.post("/api/recap/export", requireGoogleLogin, (req, res, next) => {
       return res.status(429).json({
         ok: false, code: "NO_CREDITS",
         error: "Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",
-        credits: { daily: Number(user.dailyCredits || 0), purchased: Number(user.purchasedCredits || 0) }
+        credits: { daily: Number(user.dailyCredits || 0), purchased: Number(user.purchasedCredits || 0), total: Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0) }
       });
     }
     const script = String(req.body?.script || "").trim();
@@ -717,15 +775,26 @@ app.post("/api/recap/export", requireGoogleLogin, (req, res, next) => {
     // Deduct only after successful MP4 creation.
     consumeCredit(user);
     await saveUsers();
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", 'attachment; filename="james-ai-myanmar-recap.mp4"');
-    res.setHeader("Content-Length", String(stat.size));
-    res.setHeader("X-JamesAI-Credits-Remaining", String(Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0)));
-    fs.createReadStream(outputPath).pipe(res);
-    res.on("close", () => {
-      if (tempDir) fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      if (sourcePath) fs.promises.rm(sourcePath, { force: true }).catch(() => {});
+    const exportId = randomBytes(24).toString("hex");
+    recapExportJobs.set(exportId, {
+      outputPath,
+      tempDir,
+      userSub: user.sub,
+      expiresAt: Date.now() + RECAP_EXPORT_TTL_MS
     });
+    setTimeout(() => cleanupRecapExport(exportId), RECAP_EXPORT_TTL_MS).unref?.();
+    // JSON response keeps the phone from loading the whole MP4 into RAM.
+    res.json({
+      ok: true,
+      downloadUrl: `/api/recap/export/download/${exportId}`,
+      previewUrl: `/api/recap/export/download/${exportId}?preview=1`,
+      expiresInSeconds: Math.floor(RECAP_EXPORT_TTL_MS / 1000),
+      creditsRemaining: Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0),
+      credits: { daily: Number(user.dailyCredits || 0), purchased: Number(user.purchasedCredits || 0), total: Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0) }
+    });
+    // Output is cleaned after download URL expires. Source upload is no longer needed.
+    if (sourcePath) fs.promises.rm(sourcePath, { force: true }).catch(() => {});
+    tempDir = "";
   } catch (error) {
     console.error("RECAP EXPORT ERROR:", error?.stderr || error);
     if (!res.headersSent) res.status(500).json({ ok: false, error: String(error?.message || "Server-side Video Export မအောင်မြင်ပါ။") });
