@@ -8,8 +8,6 @@ import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { createClient } from "@supabase/supabase-js";
-import multer from "multer";
-import { randomBytes } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,7 +34,6 @@ const apiKey = String(process.env.OPENAI_API_KEY || "")
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const execFileAsync = promisify(execFile);
-const recapUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
 const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
@@ -60,14 +57,6 @@ const PLANS = {
   pro30: { id: "pro30", name: "Plus Pro", durationDays: 30, messages: Number(process.env.PRO_MESSAGE_LIMIT || 500), images: Number(process.env.PRO_IMAGE_LIMIT || 50) }
 };
 
-const CREDIT_PACKS = [
-  { id: "credits30", credits: 30, price: "5,500 MMK" },
-  { id: "credits75", credits: 75, price: "10,000 MMK" },
-  { id: "credits100", credits: 100, price: "15,000 MMK" },
-  { id: "credits300", credits: 300, price: "35,000 MMK" },
-  { id: "credits500", credits: 500, price: "55,000 MMK" },
-  { id: "credits1000", credits: 1000, price: "150,000 MMK" }
-];
 const PLAN_PRICES = {
   plus7: String(process.env.PLAN_PLUS7_PRICE || "SET PRICE"),
   plus15: String(process.env.PLAN_PLUS15_PRICE || "SET PRICE"),
@@ -178,21 +167,14 @@ function saveUsers() {
 function nowMs() { return Date.now(); }
 const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 function makeUser(user) {
-  // Establish the clock before using it for credit resets; otherwise a valid
-  // Google login would throw a ReferenceError while initializing the account.
-  const now = nowMs();
   const existing = users[user.sub] || {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
     plan: "free", planStartedAt: null, planExpiresAt: null,
     messageCount: 0, imageCount: 0, windowStartedAt: null, freeResetAt: null,
-    pendingPurchase: null, dailyCredits: 3, dailyCreditsResetAt: now + QUOTA_WINDOW_MS, purchasedCredits: 0
+    pendingPurchase: null
   };
   existing.email = user.email; existing.name = user.name; existing.picture = user.picture;
-  if (!Number.isFinite(Number(existing.dailyCredits))) existing.dailyCredits = 3;
-  if (!Number.isFinite(Number(existing.purchasedCredits))) existing.purchasedCredits = 0;
-  if (!existing.dailyCreditsResetAt || now >= Number(existing.dailyCreditsResetAt)) {
-    existing.dailyCredits = 3; existing.dailyCreditsResetAt = now + QUOTA_WINDOW_MS;
-  }
+  const now = nowMs();
   if (existing.plan !== "free" && existing.planExpiresAt && now >= existing.planExpiresAt) {
     // Paid plan has ended: return to Free and reset all paid-plan counters.
     existing.plan = "free"; existing.planStartedAt = null; existing.planExpiresAt = null;
@@ -261,11 +243,6 @@ function incrementUsage(user, kind) {
   if (user.plan === "free" && (user.messageCount >= p.messages || user.imageCount >= p.images)) {
     user.freeResetAt = nowMs() + QUOTA_WINDOW_MS;
   }
-}
-function hasCredits(user) { return Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0) > 0; }
-function consumeCredit(user) {
-  if (Number(user.dailyCredits || 0) > 0) user.dailyCredits -= 1;
-  else if (Number(user.purchasedCredits || 0) > 0) user.purchasedCredits -= 1;
 }
 function paymentInfoFor(planId, user) {
   return {
@@ -404,23 +381,6 @@ async function requireGoogleLogin(req, res, next) {
     });
   }
   req.googleUser = user;
-  // If Supabase is configured, refresh this account's latest shared record before
-  // checking credits. This prevents an instance's stale in-memory balance from
-  // incorrectly reporting "no credits" when another instance has the purchase.
-  if (supabase) {
-    try {
-      const { data: row, error } = await supabase
-        .from(SUPABASE_USERS_TABLE)
-        .select("user_data")
-        .eq("google_sub", user.sub)
-        .maybeSingle();
-      if (error) throw error;
-      if (row?.user_data && typeof row.user_data === "object") users[user.sub] = row.user_data;
-    } catch (error) {
-      console.error("USER CREDIT REFRESH ERROR:", error.message || error);
-      return res.status(503).json({ ok:false, error:"Account/Credit data ကို Cloud မှ မဖတ်နိုင်ပါ။ Render မှာ Supabase connection ကို စစ်ပါ။" });
-    }
-  }
   req.appUser = makeUser(user);
   next();
 }
@@ -488,28 +448,28 @@ app.get("/api/health", (_req, res) => {
 
 
 app.get("/api/plans", (_req, res) => {
-  res.json({ ok: true, plans: planList(), creditPacks: CREDIT_PACKS });
+  res.json({ ok: true, plans: planList() });
 });
 
 app.get("/api/usage", requireGoogleLogin, async (req, res) => {
   const user = req.appUser;
   await saveUsers();
-  res.json({ ok:true, plan:publicPlan(user), plans:planList(), creditPacks:CREDIT_PACKS, credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0),resetAt:user.dailyCreditsResetAt}, pendingPurchase:user.pendingPurchase || null });
+  res.json({ ok:true, plan:publicPlan(user), plans:planList(), pendingPurchase:user.pendingPurchase || null });
 });
 
 app.post("/api/purchase", requireGoogleLogin, async (req, res) => {
   const planId = String(req.body?.planId || "").trim();
-  const creditPackId = String(req.body?.creditPackId || "").trim();
-  const pack = CREDIT_PACKS.find(p => p.id === creditPackId);
-  if (!pack && !["plus7","plus15","pro30"].includes(planId)) return res.status(400).json({ok:false,error:"Invalid plan or credit pack."});
+  if (!["plus7","plus15","pro30"].includes(planId)) {
+    return res.status(400).json({ok:false,error:"Invalid plan."});
+  }
   const user = req.appUser;
   const orderId = `JAI-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  user.pendingPurchase = pack
-    ? { orderId, orderType:"credit", creditPackId:pack.id, credits:pack.credits, createdAt:nowMs(), status:"pending", price:pack.price }
-    : { orderId, orderType:"plan", planId, createdAt:nowMs(), status:"pending", price:PLAN_PRICES[planId] };
+  user.pendingPurchase = {
+    orderId, planId, createdAt: nowMs(), status:"pending",
+    price: PLAN_PRICES[planId]
+  };
   await saveUsers();
-  const info = paymentInfoFor(pack ? "credit" : planId,user);
-  res.json({ok:true, orderId, plan:pack ? pack.id : planId, price:pack ? pack.price : PLAN_PRICES[planId], paymentUrl:pack ? "" : PAYMENT_URLS[planId], wavePayPhone:info.wavePayPhone, wavePayName:info.wavePayName, instructions:info.instructions});
+  res.json({ok:true, orderId, ...paymentInfoFor(planId,user)});
 });
 
 app.post("/api/purchase/submit", requireGoogleLogin, async (req, res) => {
@@ -557,17 +517,9 @@ app.post("/api/admin/activate", async (req, res) => {
   const sub = String(req.body?.sub || "").trim();
   const email = String(req.body?.email || "").trim().toLowerCase();
   const planId = String(req.body?.planId || "").trim();
+  if ((!sub && !email) || !PLANS[planId] || planId === "free") return res.status(400).json({ok:false,error:"Invalid user or plan."});
   const user = sub ? users[sub] : Object.values(users).find(x => String(x.email || "").toLowerCase() === email);
   if (!user) return res.status(404).json({ok:false,error:"User not found."});
-  if (user.pendingPurchase?.orderType === "credit") {
-    const pack = CREDIT_PACKS.find(p => p.id === user.pendingPurchase.creditPackId);
-    if (!pack) return res.status(400).json({ok:false,error:"Invalid credit pack."});
-    user.purchasedCredits = Number(user.purchasedCredits || 0) + pack.credits;
-    user.pendingPurchase = null;
-    await saveUsers();
-    return res.json({ok:true, credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
-  }
-  if (!PLANS[planId] || planId === "free") return res.status(400).json({ok:false,error:"Invalid user or plan."});
   const start = nowMs();
   user.plan = planId;
   user.planStartedAt = start;
@@ -651,161 +603,6 @@ Help with general questions, programming, study, translation, writing, math, exp
 });
 
 
-
-// Completed exports stay on the server briefly. The phone streams the MP4 from
-// a download URL instead of buffering the entire output in a JavaScript Blob.
-const recapExportJobs = new Map();
-const RECAP_EXPORT_TTL_MS = 15 * 60 * 1000;
-function cleanupRecapExport(id) {
-  const job = recapExportJobs.get(id);
-  if (!job) return;
-  recapExportJobs.delete(id);
-  fs.promises.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
-}
-app.get("/api/recap/export/download/:id", async (req, res) => {
-  const job = recapExportJobs.get(String(req.params.id || ""));
-  if (!job || job.expiresAt < Date.now()) {
-    if (job) cleanupRecapExport(req.params.id);
-    return res.status(404).json({ ok:false, error:"Export ဖိုင် သက်တမ်းကုန်သွားပါပြီ။ Video ကို ပြန် Export လုပ်ပါ။" });
-  }
-  const preview = req.query.preview === "1";
-  const stat = await fs.promises.stat(job.outputPath).catch(() => null);
-  if (!stat?.isFile()) { cleanupRecapExport(req.params.id); return res.status(404).json({ ok:false, error:"Export ဖိုင် မတွေ့ပါ။ ပြန် Export လုပ်ပါ။" }); }
-  res.setHeader("Content-Type", "video/mp4");
-  res.setHeader("Content-Disposition", `${preview ? "inline" : "attachment"}; filename="james-ai-myanmar-recap.mp4"`);
-  res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Accept-Ranges", "bytes");
-  const range = req.headers.range;
-  if (range) {
-    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-    if (!match) { res.status(416).end(); return; }
-    const start = match[1] ? Number(match[1]) : 0;
-    const end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
-    if (start > end || start >= stat.size) { res.status(416).setHeader("Content-Range", `bytes */${stat.size}`).end(); return; }
-    res.status(206);
-    res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
-    res.setHeader("Content-Length", String(end - start + 1));
-    fs.createReadStream(job.outputPath, { start, end }).on("error", () => { if (!res.headersSent) res.status(500).end(); }).pipe(res);
-    return;
-  }
-  res.setHeader("Content-Length", String(stat.size));
-  fs.createReadStream(job.outputPath).on("error", () => { if (!res.headersSent) res.status(500).end(); }).pipe(res);
-});
-
-// Server-side James Recap export. The phone uploads the source video; Render
-// generates Burmese narration and creates the MP4. Credit is charged only after
-// FFmpeg has successfully created a non-empty output file.
-app.post("/api/recap/export", requireGoogleLogin, (req, res, next) => {
-  recapUpload.single("video")(req, res, (err) => {
-    if (err) {
-      const message = err.code === "LIMIT_FILE_SIZE"
-        ? "Video ဖိုင်သည် 500 MB ထက်ကြီးနေပါတယ်။ ပိုသေးတဲ့ Video ကို ရွေးပါ။"
-        : String(err.message || "Video upload မအောင်မြင်ပါ။");
-      return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ ok: false, error: message });
-    }
-    next();
-  });
-}, async (req, res) => {
-  let tempDir = "";
-  try {
-    const user = req.appUser || makeUser(req.googleUser);
-    if (!req.file?.path) return res.status(400).json({ ok: false, error: "Video file ကို အရင်ရွေးပေးပါ။" });
-    if (!hasCredits(user)) {
-      return res.status(429).json({
-        ok: false, code: "NO_CREDITS",
-        error: "Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",
-        credits: { daily: Number(user.dailyCredits || 0), purchased: Number(user.purchasedCredits || 0), total: Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0) }
-      });
-    }
-    const script = String(req.body?.script || "").trim();
-    if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပေးပါ။" });
-    if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
-
-    const gender = String(req.body?.voice || "female").toLowerCase() === "male" ? "male" : "female";
-    const rateCandidate = String(req.body?.rate || "-5%");
-    const rate = ["-5%", "+0%", "+5%"].includes(rateCandidate) ? rateCandidate : "-5%";
-    const addSubtitle = String(req.body?.subtitle || "false") === "true";
-
-    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-recap-export-"));
-    const sourcePath = req.file.path;
-    const voicePath = path.join(tempDir, "narration.mp3");
-    const outputPath = path.join(tempDir, "james-ai-myanmar-recap.mp4");
-    const subtitlePath = path.join(tempDir, "recap.txt");
-    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
-
-    await execFileAsync(python, [
-      "-m", "edge_tts", "--voice",
-      gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural",
-      "--rate", rate, "--text", script, "--write-media", voicePath
-    ], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-
-    let videoFilter = "scale='min(960,iw)':-2,fps=20";
-    if (addSubtitle) {
-      await fs.promises.writeFile(subtitlePath, script.replace(/[\r\n]+/g, " ").slice(0, 1200), "utf8");
-      const fontCandidates = [
-        "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansMyanmar-VF.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-      ];
-      const fontPath = fontCandidates.find(p => fs.existsSync(p));
-      if (fontPath) {
-        const safe = p => p.replace(/\\/g, "/").replace(/:/g, "\\:");
-        videoFilter += `,drawtext=fontfile='${safe(fontPath)}':textfile='${safe(subtitlePath)}':fontcolor=white:fontsize=h/28:box=1:boxcolor=black@0.6:boxborderw=12:x=(w-text_w)/2:y=h-text_h-24`;
-      }
-    }
-    const args = [
-      "-y", "-i", sourcePath, "-i", voicePath,
-      "-map", "0:v:0", "-map", "1:a:0",
-      "-vf", videoFilter,
-      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-      "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath
-    ];
-
-    const ffmpegResult = await execFileAsync(python, [
-      "-c", "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
-    ], { timeout: 30000, maxBuffer: 1024 * 1024 });
-    const ffmpegPath = String(ffmpegResult.stdout || "").trim();
-    if (!ffmpegPath) throw new Error("FFmpeg executable ကို မတွေ့ပါ။");
-    await execFileAsync(ffmpegPath, args, { timeout: 15 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
-
-    const stat = await fs.promises.stat(outputPath);
-    if (!stat.size) throw new Error("Export Video ဖိုင် မထွက်လာပါ။");
-
-    // Deduct only after successful MP4 creation.
-    consumeCredit(user);
-    await saveUsers();
-    const exportId = randomBytes(24).toString("hex");
-    recapExportJobs.set(exportId, {
-      outputPath,
-      tempDir,
-      userSub: user.sub,
-      expiresAt: Date.now() + RECAP_EXPORT_TTL_MS
-    });
-    setTimeout(() => cleanupRecapExport(exportId), RECAP_EXPORT_TTL_MS).unref?.();
-    // JSON response keeps the phone from loading the whole MP4 into RAM.
-    res.json({
-      ok: true,
-      downloadUrl: `/api/recap/export/download/${exportId}`,
-      previewUrl: `/api/recap/export/download/${exportId}?preview=1`,
-      expiresInSeconds: Math.floor(RECAP_EXPORT_TTL_MS / 1000),
-      creditsRemaining: Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0),
-      credits: { daily: Number(user.dailyCredits || 0), purchased: Number(user.purchasedCredits || 0), total: Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0) }
-    });
-    // Output is cleaned after download URL expires. Source upload is no longer needed.
-    if (sourcePath) fs.promises.rm(sourcePath, { force: true }).catch(() => {});
-    tempDir = "";
-  } catch (error) {
-    console.error("RECAP EXPORT ERROR:", error?.stderr || error);
-    if (!res.headersSent) res.status(500).json({ ok: false, error: String(error?.message || "Server-side Video Export မအောင်မြင်ပါ။") });
-  } finally {
-    if (!res.headersSent) {
-      if (req.file?.path) await fs.promises.rm(req.file.path, { force: true }).catch(() => {});
-      if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-});
-
 // AI recap preparation: summarizes supplied transcript/script using OpenAI.
 // Video files themselves are not directly decoded here; provide transcript/subtitle text.
 app.post("/api/recap", requireGoogleLogin, async (req, res) => {
@@ -816,7 +613,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
     if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
     const user = makeUser(req.googleUser);
-    // Preparing recap text does not consume an export credit.
+    if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
     const response = await client.responses.create({
       model,
       instructions: language === "en"
@@ -826,6 +623,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     });
     const recap = String(response.output_text || "").trim();
     if (!recap) return res.status(502).json({ok:false,error:"OpenAI က recap မပြန်လာပါ။"});
+    incrementUsage(user, "message"); await saveUsers();
     res.json({ok:true, recap, usage:publicPlan(user)});
   } catch (error) {
     console.error("RECAP ERROR:", error);
@@ -866,6 +664,52 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
     console.error("VOICE ERROR:", error?.stderr || error);
     const detail = String(error?.stderr || error?.message || "Voice generation error").trim().slice(0, 500);
     res.status(502).json({ ok: false, error: `Edge TTS မအောင်မြင်ပါ။ Python/edge-tts install ဖြစ်မှုနှင့် internet access ကိုစစ်ပါ။ ${detail}` });
+  } finally {
+    if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
+// Server-side recap export: heavy video encoding runs on the server, not the phone.
+// Upload the source video as application/octet-stream; output is MP4 (H.264/AAC).
+app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "application/octet-stream", limit: "150mb" }), async (req, res) => {
+  let tempDir = "";
+  try {
+    const input = req.body;
+    if (!Buffer.isBuffer(input) || !input.length) {
+      return res.status(400).json({ ok: false, error: "Video ဖိုင်ကို ပြန်ရွေးပြီး Export လုပ်ပါ။" });
+    }
+    const script = String(req.query.script || "").trim();
+    const gender = String(req.query.voice || "female").toLowerCase() === "male" ? "male" : "female";
+    const rateValue = String(req.query.rate || "-5%");
+    const rate = ["-5%", "+0%", "+5%"].includes(rateValue) ? rateValue : "-5%";
+    if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။" });
+    if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
+    const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-export-"));
+    const inputPath = path.join(tempDir, "source-video");
+    const voicePath = path.join(tempDir, "voice.mp3");
+    const outputPath = path.join(tempDir, "recap.mp4");
+    await fs.promises.writeFile(inputPath, input);
+    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
+    const voice = gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural";
+    await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", script, "--write-media", voicePath], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale='min(960,iw)':-2", "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
+    await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
+    const stat = await fs.promises.stat(outputPath);
+    if (!stat.size) throw new Error("FFmpeg returned an empty video.");
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", 'attachment; filename="james-ai-myanmar-recap.mp4"');
+    res.setHeader("Content-Length", String(stat.size));
+    const stream = fs.createReadStream(outputPath);
+    await new Promise((resolve, reject) => {
+      stream.on("error", reject);
+      res.on("finish", resolve);
+      stream.pipe(res);
+    });
+  } catch (error) {
+    console.error("RECAP EXPORT ERROR:", error?.stderr || error);
+    const message = String(error?.stderr || error?.message || "Video export failed").trim().slice(0, 500);
+    if (!res.headersSent) res.status(502).json({ ok: false, error: `Server Video Export မအောင်မြင်ပါ။ Render မှာ ffmpeg နှင့် edge-tts ရှိမှုကို စစ်ပါ။ ${message}` });
   } finally {
     if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
