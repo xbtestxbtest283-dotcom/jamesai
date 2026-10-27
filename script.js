@@ -798,13 +798,6 @@ function renderPlans(plans) {
   grid.querySelectorAll(".plan-buy-btn").forEach(btn => btn.addEventListener("click", () => openPurchase(btn.dataset.plan, plans)));
 }
 
-document.addEventListener('click', (event) => {
-  if (event.target.closest('#refreshRecapCreditBtn')) {
-    event.preventDefault();
-    loadUsage().then(() => { const btn = document.querySelector('#refreshRecapCreditBtn'); if (btn) { const old = btn.textContent; btn.textContent = '✓ Updated'; setTimeout(() => { btn.textContent = old; }, 1200); } });
-  }
-});
-
 function renderCreditPacks(packs, credits) {
   const recapCreditBadge = document.querySelector("#recapView .recap-pill b");
   if (recapCreditBadge) recapCreditBadge.textContent = credits ? String(Number(credits.total || 0)) : "3";
@@ -1150,8 +1143,9 @@ function setupRecapUI() {
 setupRecapUI();
 
 
-// Recap video export: browser-side MP4/WebM capture with optional subtitle overlay.
-// Uses the selected source video and creates a downloadable WebM without changing other features.
+// Server-side Recap export: upload the source video and script to Render.
+// The phone does not encode frames; the server creates the MP4 and charges only
+// after a valid output file has been produced.
 function setupRecapVideoExport() {
   const btn = document.querySelector('#exportRecapVideoBtn');
   if (!btn || btn.dataset.bound === '1') return;
@@ -1160,138 +1154,78 @@ function setupRecapVideoExport() {
     const file = document.querySelector('#recapVideoFile')?.files?.[0];
     const script = document.querySelector('#recapScript')?.value?.trim() || '';
     const status = document.querySelector('#recapStatus');
-    const setStatus = (s) => { if (status) status.textContent = s; };
+    const setStatus = value => { if (status) status.textContent = value; };
     if (!file) { setStatus('Video file ကို အရင်ရွေးပေးပါ။'); return; }
-    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
-      setStatus('ဒီ Browser မှာ Video Export မထောက်ပံ့ပါ။ Chrome သို့မဟုတ် Edge နဲ့ စမ်းပါ။'); return;
-    }
+    if (!script) { setStatus('Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။'); return; }
+    if (file.size > 500 * 1024 * 1024) { setStatus('Video ဖိုင်သည် 500 MB ထက်ကြီးနေပါတယ်။ ပိုသေးတဲ့ Video ကိုရွေးပါ။'); return; }
+
     btn.disabled = true;
-    let video, canvas, ctx, raf, recorder, stream, voiceAudio, voiceStream, chunks = [];
-    const exportId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('exp-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    const oldText = btn.textContent;
+    btn.textContent = 'Uploading / Exporting…';
     try {
-      setStatus('Video ကို ပြင်ဆင်နေပါတယ်…');
-      video = document.createElement('video');
-      video.muted = true; video.playsInline = true; video.preload = 'auto';
-      video.src = URL.createObjectURL(file);
-      await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=()=>reject(new Error('Video ဖိုင်ကို ဖတ်မရပါ။'));});
-      canvas = document.createElement('canvas');
-      canvas.width = Math.min(video.videoWidth || 640, 640);
-      canvas.height = Math.round(canvas.width * (video.videoHeight || 720) / (video.videoWidth || 1280));
-      ctx = canvas.getContext('2d');
-      let lastDrawAt = 0;
-      const draw = (timestamp = 0) => {
-        if (!video || !ctx) return;
-        if (timestamp - lastDrawAt < 66) { raf = requestAnimationFrame(draw); return; }
-        lastDrawAt = timestamp;
-        ctx.drawImage(video,0,0,canvas.width,canvas.height);
-        if (document.querySelector('#recapSubtitle')?.checked && script) {
-          const lines = [];
-          const words = script.replace(/\s+/g,' ').split(' ');
-          let line = '';
-          for (const word of words) { const next = line ? line+' '+word : word;
-            if (ctx.measureText(next).width > canvas.width*0.84 && line) { lines.push(line); line=word; } else line=next; }
-          if (line) lines.push(line);
-          const shown = lines.slice(0,3);
-          ctx.fillStyle='rgba(0,0,0,.68)'; ctx.fillRect(0,canvas.height-canvas.height*.19,canvas.width,canvas.height*.19);
-          ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
-          ctx.font=`${Math.max(18,Math.round(canvas.width*.035))}px sans-serif`;
-          shown.forEach((t,i)=>ctx.fillText(t,canvas.width/2,canvas.height-canvas.height*.13+i*Math.max(22,canvas.height*.045),canvas.width*.92));
+      setStatus('Video ကို Render Server ဆီ ပို့နေပါတယ်… ဖုန်းကို ဆက်ဖွင့်ထားပါ။');
+      const form = new FormData();
+      form.append('video', file, file.name || 'source-video');
+      form.append('script', script);
+      form.append('voice', document.querySelector('#recapVoice')?.value || 'female');
+      form.append('rate', document.querySelector('#recapVoiceRate')?.value || '-5%');
+      form.append('subtitle', document.querySelector('#recapSubtitle')?.checked ? 'true' : 'false');
+
+      setStatus('Server မှာ မြန်မာအသံဖန်တီးပြီး Video + Audio ကို MP4 အဖြစ် ပေါင်းနေပါတယ်…');
+      const response = await fetch(apiUrl('/api/recap/export'), {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok) {
+        let message = 'Server-side Video Export မအောင်မြင်ပါ။';
+        if (contentType.includes('application/json')) {
+          const data = await response.json().catch(() => ({}));
+          message = data.error || message;
+        } else {
+          const raw = await response.text().catch(() => '');
+          if (raw) message = raw.slice(0, 250);
         }
-        raf = requestAnimationFrame(draw);
-      };
-      stream = canvas.captureStream(15);
-      let voiceUrl = window.jamesRecapVoiceUrl || document.querySelector('#jamesRecapVoiceAudio')?.src || '';
-      if (!voiceUrl && script) {
-        setStatus('ElevenLabs v3 က မြန်မာအသံ ဖန်တီးနေပါတယ်…');
-        const vr = await fetch(apiUrl('/api/voice'), {
-          method:'POST',
-          headers:authHeaders({'Content-Type':'application/json'}),
-          body:JSON.stringify({text:script, language:'my', voice:document.querySelector('#recapVoice')?.value || 'female', rate:document.querySelector('#recapVoiceRate')?.value || '-5%'})
-        });
-        const vd = await vr.json().catch(()=>({}));
-        if (!vr.ok || !vd.ok || !vd.audio) throw new Error(vd.error || 'Nilar / Thiha အသံ မထုတ်နိုင်ပါ။ Edge TTS service နဲ့ internet access ကို စစ်ပါ။');
-        voiceUrl = vd.audio;
-        window.jamesRecapVoiceUrl = voiceUrl;
-        let voicePlayer = document.querySelector('#jamesRecapVoiceAudio');
-        if (!voicePlayer) {
-          voicePlayer = document.createElement('audio');
-          voicePlayer.id='jamesRecapVoiceAudio'; voicePlayer.controls=true;
-          voicePlayer.style.display='block'; voicePlayer.style.width='100%'; voicePlayer.style.marginTop='10px';
-          btn.insertAdjacentElement('afterend', voicePlayer);
-        }
-        voicePlayer.src = voiceUrl;
+        throw new Error(message);
       }
-      if (voiceUrl) {
-        voiceAudio = new Audio();
-        voiceAudio.src = voiceUrl;
-        voiceAudio.preload = 'auto';
-        voiceAudio.crossOrigin = 'anonymous';
-        await new Promise((resolve,reject) => {
-          voiceAudio.oncanplaythrough = resolve;
-          voiceAudio.onerror = () => reject(new Error('မြန်မာအသံဖိုင်ကို ဖတ်မရပါ။ Prepare recap + Myanmar voice ကို အရင်နှိပ်ပါ။'));
-          voiceAudio.load();
-          setTimeout(() => resolve(), 8000);
-        });
-        if (voiceAudio.captureStream) voiceStream = voiceAudio.captureStream();
-        else if (voiceAudio.mozCaptureStream) voiceStream = voiceAudio.mozCaptureStream();
-        if (!voiceStream || !voiceStream.getAudioTracks().length) {
-          throw new Error('ဒီ Browser က Audio Capture မထောက်ပံ့ပါ။ Chrome ကို အသုံးပြုပြီး ပြန်စမ်းပါ။');
-        }
-        voiceStream.getAudioTracks().forEach(track => stream.addTrack(track));
-      } else {
-        throw new Error('Recap Script မရှိပါ။ Script ထည့်ပြီး Prepare recap ကို အရင်နှိပ်ပါ။');
+      if (!contentType.includes('video/mp4')) {
+        const data = contentType.includes('application/json') ? await response.json().catch(() => ({})) : {};
+        throw new Error(data.error || 'Server က MP4 Video မပြန်ပေးပါ။ Render Deploy ကို စစ်ပါ။');
       }
-      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
-        (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
-      recorder = new MediaRecorder(stream,{mimeType:mime});
-      recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-      const stopped = new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error('Video export မအောင်မြင်ပါ။'));});
-      draw(); recorder.start(1000);
-      if (voiceAudio) {
-        voiceAudio.currentTime = 0;
-        const voicePlay = voiceAudio.play().catch(()=>{});
-        await video.play();
-        setStatus('မြန်မာအသံ + Subtitle ပါတဲ့ Video ကို Export လုပ်နေပါတယ်…');
-        await new Promise(resolve => {
-          let done = false;
-          const finish = () => { if (!done) { done=true; resolve(); } };
-          video.onended = finish; video.onerror = finish;
-          // Keep recording until the source video ends, even if narration finishes first.
-          // This avoids truncated exports when the voiceover is shorter than the video.
-        });
-        voiceAudio.pause();
-      } else {
-        await video.play();
-        setStatus('အသံမတွေ့ပါ။ Subtitle ပါတဲ့ Video ကို Export လုပ်နေပါတယ်…');
-        await new Promise(resolve=>{ video.onended=resolve; video.onerror=resolve; });
-      }
-      recorder.stop(); await stopped;
-      const blob = new Blob(chunks,{type:'video/webm'});
-      if (!blob.size) throw new Error('Video ဖိုင်မထွက်လာပါ။ ထပ်စမ်းကြည့်ပါ။');
-      setStatus('Credit စစ်ဆေးနေပါတယ်…');
-      const creditResponse = await fetch(apiUrl('/api/recap/export-complete'), {method:'POST', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify({exportId})});
-      const creditData = await creditResponse.json().catch(()=>({}));
-      if (!creditResponse.ok || !creditData.ok) throw new Error(creditData.error || 'Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။');
-      await loadUsage();
+
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('MP4 ဖိုင်အလွတ် ပြန်ရလာပါတယ်။ ထပ်စမ်းပါ။');
       const url = URL.createObjectURL(blob);
       const preview = document.querySelector('#recapExportPreview');
       const player = document.querySelector('#recapExportPlayer');
       const download = document.querySelector('#recapExportDownload');
       if (player && preview) {
+        if (player.dataset.objectUrl) URL.revokeObjectURL(player.dataset.objectUrl);
+        player.dataset.objectUrl = url;
         player.src = url;
         preview.hidden = false;
-        if (download) download.href = url;
-        preview.scrollIntoView({behavior:'smooth', block:'start'});
-        setStatus('Video Export ပြီးပါပြီ။ အောက်မှာ Recap Video ကို ကြည့်နိုင်ပါပြီ။');
+        if (download) {
+          download.href = url;
+          download.download = 'james-ai-myanmar-recap.mp4';
+          download.textContent = 'Download MP4';
+        }
+        preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else {
-        const a = document.createElement('a'); a.href=url; a.download='james-ai-myanmar-recap.webm';
+        const a = document.createElement('a');
+        a.href = url; a.download = 'james-ai-myanmar-recap.mp4';
         document.body.appendChild(a); a.click(); a.remove();
-        setStatus('Video Export ပြီးပါပြီ။ Download လုပ်နေပါတယ်။');
       }
-      
-    } catch (e) { setStatus('Export မအောင်မြင်ပါ: '+(e?.message || 'Browser ခွင့်ပြုချက်/Video format ကို စစ်ပါ။')); }
-    finally { if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t=>t.stop()); if (voiceStream) voiceStream.getTracks().forEach(t=>t.stop()); if (voiceAudio) { voiceAudio.pause(); voiceAudio.src=''; } if(video?.src) URL.revokeObjectURL(video.src); btn.disabled=false; }
+      await loadUsage().catch(() => {});
+      setStatus('Video Export ပြီးပါပြီ။ MP4 ကို အောက်က Download ခလုတ်နဲ့ သိမ်းနိုင်ပါတယ်။');
+    } catch (error) {
+      setStatus('Export မအောင်မြင်ပါ: ' + (error?.message || 'Server / FFmpeg / Edge TTS ကို စစ်ပါ။'));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = oldText || 'Export recap video';
+    }
   });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupRecapVideoExport);
 else setupRecapVideoExport();
+
