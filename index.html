@@ -186,11 +186,12 @@
               <span class="recap-tool-copy"><strong>James Voice Clone</strong><small>AI Voice Clone · Text-to-Speech · Voiceover</small></span><span class="recap-chevron">›</span>
             </button>
             <div id="voiceClonePanel" class="recap-work-panel hidden">
-              <h3>AI Voice Clone & TTS</h3><p>Voice sample နှင့် စာသားကို အသုံးပြုပြီး Voiceover ပြင်ဆင်ရန်။ အသံဖန်တီးမှုအတွက် သင့်လျော်သော Voice API key ချိတ်ဆက်ထားရပါမယ်။</p>
+              <h3>AI Voice & TTS</h3><p>Microsoft Edge online speech service (edge-tts) ကို အသုံးပြုပြီး မြန်မာ Nilar/Thiha အသံဖြင့် MP3 ထုတ်ပေးပါမည်။ API key မလိုသော်လည်း third-party online service ဖြစ်ပြီး rate limit သို့မဟုတ် service ပြောင်းလဲမှုများ ရှိနိုင်ပါသည်။</p>
               <label class="recap-field-label" for="voiceSampleFile">Voice sample (ခွင့်ပြုချက်ရှိသော အသံသာ အသုံးပြုပါ)</label><input id="voiceSampleFile" type="file" accept="audio/*" class="recap-file-input">
               <label class="recap-field-label" for="voiceText">ဖတ်စေလိုသော စာသား</label><textarea id="voiceText" class="recap-field" rows="4" placeholder="အသံဖတ်စေလိုသော စာသား ရိုက်ပါ..."></textarea>
               <label class="recap-field-label" for="voiceLanguage">Language</label><select id="voiceLanguage" class="recap-field"><option value="my">မြန်မာ</option><option value="en">English</option></select>
-              <button type="button" class="primary-btn" id="prepareVoiceBtn">Prepare voiceover</button><p class="recap-status" id="voiceStatus" role="status">API မချိတ်ဆက်ရသေးပါ — အသံထုတ်လုပ်မှုကို မလုပ်ဆောင်နိုင်သေးပါ။</p>
+              <label class="recap-field-label" for="voiceGender">အသံအမျိုးအစား</label><select id="voiceGender" class="recap-field"><option value="female">အမျိုးသမီး (Nilar)</option><option value="male">အမျိုးသား (Thiha)</option></select>
+              <button type="button" class="primary-btn" id="prepareVoiceBtn">Prepare voiceover</button><p class="recap-status" id="voiceStatus" role="status">Edge TTS ဖြင့် အသံထုတ်ရန် အဆင်သင့်ဖြစ်ပါပြီ။</p>
             </div>
             <div class="recap-benefits"><h3>James AI မှာ အသုံးပြုနိုင်မယ့် Tools</h3><ul><li>AI Voice Clone & Text-to-Speech (TTS)</li><li>Subtitle ဖန်တီးခြင်းနှင့် ဘာသာပြန်ခြင်း</li><li>ဖုန်း၊ PC၊ Laptop များတွင် အသုံးပြုနိုင်ရန် Responsive UI</li><li>TikTok နှင့် YouTube အတွက် Export workflow — output quality သည် source video နှင့် API ပေါ်မူတည်သည်</li></ul></div>
             <p class="recap-disclaimer">မှတ်ချက် — ဒီအပိုင်းက UI အခြေခံဖြစ်ပါတယ်။ တကယ့် AI recap, voice clone, subtitle generation နဲ့ export လုပ်ဆောင်ချက်များအတွက် backend/API ချိတ်ဆက်မှုကို သီးခြားတပ်ဆင်ရပါမယ်။</p>

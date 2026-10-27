@@ -42,3 +42,8 @@ Add the deployed Render URL as an Authorized JavaScript origin in Google Cloud, 
 ## Verify
 
 Open `https://YOUR-RENDER-URL/api/health`; it should return `{"ok":true,...}`. Then log in with a test account and confirm the same plan/quota remains after restart.
+
+
+## Burmese TTS (Nilar / Thiha)
+
+The `/api/voice` endpoint uses `edge-tts` with Microsoft Edge's online speech service. `render.yaml` installs `requirements.txt` during build; no ElevenLabs key or voice ID is required. Burmese voices are selected as `my-MM-NilarNeural` (female) and `my-MM-ThihaNeural` (male). English uses `en-US-JennyNeural` / `en-US-GuyNeural`. This is an unofficial client of an online service, not a guaranteed public API; Microsoft may throttle or change access.

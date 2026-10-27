@@ -1,0 +1,10 @@
+JamesAI TTS patch (2026-10-27)
+
+- Replaced ElevenLabs-only /api/voice backend with edge-tts command-line generation.
+- Burmese voice mapping: female = my-MM-NilarNeural; male = my-MM-ThihaNeural.
+- English voice mapping: female = en-US-JennyNeural; male = en-US-GuyNeural.
+- Returns generated MP3 as the existing data:audio/mpeg;base64 response expected by the frontend.
+- Added requirements.txt and Render build installation for edge-tts.
+- No ElevenLabs API key is required.
+
+Limitations: edge-tts uses Microsoft Edge's online speech service through an unofficial client; availability, rate limits, and terms may change. Deployment/build and actual cloud audio generation should be tested after deploying.

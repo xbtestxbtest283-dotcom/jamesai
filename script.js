@@ -1020,7 +1020,7 @@ function setupRecapUI() {
   });
   document.querySelector('#voiceSampleFile')?.addEventListener('change', e => {
     const f = e.target.files?.[0], status = document.querySelector('#voiceStatus');
-    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name}. ဒီ endpoint က Render မှာ သတ်မှတ်ထားတဲ့ ElevenLabs Voice ID ကို အသုံးပြုပါမယ်။`;
+    if (f && status) status.textContent = `ရွေးထားသော audio: ${f.name}. Browser TTS သို့မဟုတ် API အသံကို အသုံးပြုနိုင်ပါတယ်။`;
   });
 
   document.querySelector('#prepareRecapBtn')?.addEventListener('click', async () => {
@@ -1035,7 +1035,9 @@ function setupRecapUI() {
       if(!r.ok || !d.ok) throw new Error(d.error || 'Recap မအောင်မြင်ပါ။');
       document.querySelector('#recapScript').value = d.recap;
       if(status) status.textContent = 'Recap အောင်မြင်ပါပြီ။ စာသားကို ပြင်ဆင်နိုင်ပါတယ်။';
-    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+     } catch(e) {
+      if (status) status.textContent = `Recap API မအောင်မြင်ပါ: ${e.message}. OpenAI/API ချိတ်ဆက်မှုကို စစ်ပါ။`;
+    }
     finally { btn.disabled = false; }
   });
 
@@ -1046,7 +1048,7 @@ function setupRecapUI() {
     const btn = document.querySelector('#prepareVoiceBtn');
     btn.disabled = true; if(status) status.textContent = 'ElevenLabs က အသံဖန်တီးနေပါတယ်…';
     try {
-      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text, language:document.querySelector('#voiceLanguage')?.value || 'my'})});
+      const r = await fetch(apiUrl('/api/voice'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({text, language:document.querySelector('#voiceLanguage')?.value || 'my', voice:document.querySelector('#voiceGender')?.value || 'female'})});
       const d = await r.json().catch(()=>({}));
       if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
       let player = document.querySelector('#jamesVoiceAudio');
@@ -1056,7 +1058,30 @@ function setupRecapUI() {
       let link = document.querySelector('#jamesVoiceDownload');
       if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
       link.href=d.audio; link.download='james-voiceover.mp3';
-    } catch(e) { if(status) status.textContent = `Error: ${e.message}`; }
+    } catch(e) {
+      // Free fallback: browser/OS voices. This previews speech only; it cannot create an MP3.
+      if ('speechSynthesis' in window && window.SpeechSynthesisUtterance) {
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          const language = document.querySelector('#voiceLanguage')?.value || 'my';
+          const gender = document.querySelector('#voiceGender')?.value || 'female';
+          const langPrefix = language === 'my' ? 'my' : 'en';
+          const voices = window.speechSynthesis.getVoices();
+          const matching = voices.filter(v => (v.lang || '').toLowerCase().startsWith(langPrefix));
+          const genderPattern = gender === 'male' ? /male|man|thiha|ko/i : /female|woman|nilar|yin/i;
+          const preferred = matching.find(v => genderPattern.test(v.name));
+          if (preferred || matching[0]) utterance.voice = preferred || matching[0];
+          utterance.lang = language === 'my' ? 'my-MM' : 'en-US';
+          utterance.onstart = () => { if (status) status.textContent = `Browser TTS ဖြင့် ဖတ်နေပါသည်။ ${matching.length ? 'အသံသည် သင့်စက်တွင် ရရှိသောအသံများအပေါ် မူတည်ပါသည်။' : 'သင့်စက်တွင် သက်ဆိုင်ရာဘာသာစကားအသံ မရှိနိုင်ပါ။'} MP3 download မရပါ။`; };
+          utterance.onerror = () => { if (status) status.textContent = `TTS API မအောင်မြင်ပါ (${e.message})၊ Browser အသံလည်း မဖတ်နိုင်ပါ။ မြန်မာအသံ ရရှိမှုသည် စက်/Browser ပေါ်မူတည်ပါသည်။`; };
+          window.speechSynthesis.speak(utterance);
+          if (status) status.textContent = `API မရပါ (${e.message})။ အခမဲ့ Browser TTS ဖြင့် ဖတ်ရန် ကြိုးစားနေပါသည်။ ဒီနည်းလမ်းသည် MP3 မထုတ်ပေးပါ။`;
+        } catch (fallbackError) {
+          if (status) status.textContent = `API Error: ${e.message}. Browser TTS မအောင်မြင်ပါ: ${fallbackError.message}`;
+        }
+      } else if (status) status.textContent = `API Error: ${e.message}. ဒီ browser မှာ Speech Synthesis မပါဝင်ပါ။`;
+    }
     finally { btn.disabled = false; }
   });
 }
@@ -1115,7 +1140,7 @@ function setupRecapVideoExport() {
         const vr = await fetch(apiUrl('/api/voice'), {
           method:'POST',
           headers:authHeaders({'Content-Type':'application/json'}),
-          body:JSON.stringify({text:script})
+          body:JSON.stringify({text:script, language:document.querySelector('#voiceLanguage')?.value || 'my', voice:document.querySelector('#voiceGender')?.value || 'female'})
         });
         const vd = await vr.json().catch(()=>({}));
         if (!vr.ok || !vd.ok || !vd.audio) throw new Error(vd.error || 'မြန်မာအသံ မထုတ်နိုင်ပါ။ ELEVENLABS_API_KEY နဲ့ ELEVENLABS_VOICE_ID ကို စစ်ပါ။');

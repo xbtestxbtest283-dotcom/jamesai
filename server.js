@@ -4,6 +4,9 @@ import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import os from "os";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -30,18 +33,7 @@ const apiKey = String(process.env.OPENAI_API_KEY || "")
   .replace(/^['"]|['"]$/g, "");
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-const elevenLabsApiKey = String(process.env.ELEVENLABS_API_KEY || "").trim().replace(/^[\'"]|[\'"]$/g, "");
-const maleVoiceId = String(
-  process.env.ELEVENLABS_MALE_VOICE_ID || ""
-).trim();
-
-const femaleVoiceId = String(
-  process.env.ELEVENLABS_FEMALE_VOICE_ID || ""
-).trim();
-
-const defaultVoiceId = String(
-  process.env.ELEVENLABS_VOICE_ID || ""
-).trim();
+const execFileAsync = promisify(execFile);
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
 const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
@@ -639,51 +631,39 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
   }
 });
 
-// Burmese/English TTS. The selected voice must itself support the requested language.
+// Burmese/English TTS through edge-tts (unofficial Microsoft Edge online speech endpoint).
+// Burmese voices: my-MM-NilarNeural (female), my-MM-ThihaNeural (male).
 app.post("/api/voice", requireGoogleLogin, async (req, res) => {
+  let tempDir = "";
   try {
-    if (!elevenLabsApiKey) {
-      return res.status(500).json({ ok: false, error: "ELEVENLABS_API_KEY မတွေ့ပါ။ Hosting Environment ကိုစစ်ပါ။" });
-    }
-
     const text = String(req.body?.text || "").trim();
     const language = String(req.body?.language || "my").trim().toLowerCase() === "en" ? "en" : "my";
-    const voiceId = String(
-      (req.body?.voice === "male" ? process.env.ELEVENLABS_MALE_VOICE_ID : "") ||
-      (req.body?.voice === "female" ? process.env.ELEVENLABS_FEMALE_VOICE_ID : "") ||
-      process.env.ELEVENLABS_VOICE_ID ||
-      process.env.ELEVENLABS_FEMALE_VOICE_ID ||
-      process.env.ELEVENLABS_MALE_VOICE_ID ||
-      ""
-    ).trim();
+    const gender = String(req.body?.voice || "female").trim().toLowerCase() === "male" ? "male" : "female";
 
     if (!text) return res.status(400).json({ ok: false, error: "ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။" });
-    if (!voiceId) return res.status(400).json({ ok: false, error: "ELEVENLABS_VOICE_ID (မြန်မာစာဖတ်နိုင်သော Voice ID) ကို Hosting Environment မှာ ထည့်ပါ။" });
     if (text.length > 5000) return res.status(413).json({ ok: false, error: "စာသားသည် 5,000 characters ထက် မကျော်ရပါ။" });
 
-    const ttsModel = process.env.ELEVENLABS_MODEL || "eleven_v3";
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
-      method: "POST",
-      headers: { "xi-api-key": elevenLabsApiKey, "Content-Type": "application/json", "Accept": "audio/mpeg" },
-      body: JSON.stringify({
-        text,
-        model_id: ttsModel,
-        // ElevenLabs API/model combinations may reject language_code="my".
-        // Let the selected Burmese-capable voice/model detect Burmese automatically.
-        ...(language === "en" ? { language_code: "en" } : {}),
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-      })
-    });
+    const voice = language === "my"
+      ? (gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural")
+      : (gender === "male" ? "en-US-GuyNeural" : "en-US-JennyNeural");
+    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-tts-"));
+    const outputPath = path.join(tempDir, "voice.mp3");
+    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      return res.status(response.status).json({ ok: false, error: `ElevenLabs error (${response.status}): ${detail.slice(0, 400)}` });
-    }
-    const audio = Buffer.from(await response.arrayBuffer());
-    res.json({ ok: true, audio: `data:audio/mpeg;base64,${audio.toString("base64")}` });
+    // Pass text as a CLI argument (no shell interpolation), avoiding command injection.
+    await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--text", text, "--write-media", outputPath], {
+      timeout: 120000,
+      maxBuffer: 2 * 1024 * 1024
+    });
+    const audio = await fs.promises.readFile(outputPath);
+    if (!audio.length) throw new Error("TTS service returned an empty audio file.");
+    res.json({ ok: true, voice, audio: `data:audio/mpeg;base64,${audio.toString("base64")}` });
   } catch (error) {
-    console.error("VOICE ERROR:", error);
-    res.status(500).json({ ok: false, error: String(error?.message || "Voice generation error") });
+    console.error("VOICE ERROR:", error?.stderr || error);
+    const detail = String(error?.stderr || error?.message || "Voice generation error").trim().slice(0, 500);
+    res.status(502).json({ ok: false, error: `Edge TTS မအောင်မြင်ပါ။ Python/edge-tts install ဖြစ်မှုနှင့် internet access ကိုစစ်ပါ။ ${detail}` });
+  } finally {
+    if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 });
 
