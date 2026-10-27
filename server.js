@@ -635,8 +635,15 @@ Help with general questions, programming, study, translation, writing, math, exp
 app.post("/api/recap/export-complete", requireGoogleLogin, async (req, res) => {
   try {
     const user = req.appUser || makeUser(req.googleUser);
-    if (!hasCredits(user)) return res.status(429).json({ok:false,code:"NO_CREDITS",error:"Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
+    const exportId = String(req.body?.exportId || "").trim();
+    if (!exportId || exportId.length > 120) return res.status(400).json({ok:false,error:"Export ID မမှန်ပါ။ Video Export ကို ပြန်စမ်းပါ။"});
+    user.completedRecapExports = Array.isArray(user.completedRecapExports) ? user.completedRecapExports : [];
+    const totalBefore = Number(user.dailyCredits||0) + Number(user.purchasedCredits||0);
+    if (user.completedRecapExports.includes(exportId)) return res.json({ok:true,alreadyCharged:true,credits:{daily:Number(user.dailyCredits||0),purchased:Number(user.purchasedCredits||0),total:totalBefore}});
+    if (!hasCredits(user)) return res.status(429).json({ok:false,code:"NO_CREDITS",error:"Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:totalBefore}});
     consumeCredit(user);
+    user.completedRecapExports.push(exportId);
+    if (user.completedRecapExports.length > 100) user.completedRecapExports = user.completedRecapExports.slice(-100);
     await saveUsers();
     return res.json({ok:true,credits:{daily:Number(user.dailyCredits||0),purchased:Number(user.purchasedCredits||0),total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
   } catch (error) {
