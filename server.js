@@ -668,7 +668,9 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
       body: JSON.stringify({
         text,
         model_id: ttsModel,
-        language_code: language,
+        // ElevenLabs API/model combinations may reject language_code="my".
+        // Let the selected Burmese-capable voice/model detect Burmese automatically.
+        ...(language === "en" ? { language_code: "en" } : {}),
         voice_settings: { stability: 0.5, similarity_boost: 0.75 }
       })
     });
