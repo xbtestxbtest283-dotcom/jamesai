@@ -775,7 +775,6 @@ async function loadUsage() {
     currentUsage = data.plan;
     updateUsageUI();
     renderPlans(data.plans || []);
-    renderCreditPacks(data.creditPacks || [], data.credits || null);
   } catch (e) {
     currentUsage = null;
     updateUsageUI();
@@ -797,60 +796,6 @@ function renderPlans(plans) {
   }).join("");
   grid.querySelectorAll(".plan-buy-btn").forEach(btn => btn.addEventListener("click", () => openPurchase(btn.dataset.plan, plans)));
 }
-
-function renderCreditPacks(packs, credits) {
-  const recapCreditBadge = document.querySelector("#recapView .recap-pill b");
-  if (recapCreditBadge) recapCreditBadge.textContent = credits ? String(Number(credits.total || 0)) : "3";
-  const grid = $("#creditPacksGrid");
-  const balance = $("#creditBalance");
-  if (balance) balance.innerHTML = credits ? `<div class="usage-top"><div><span class="usage-label">CREDIT BALANCE</span><h3>${Number(credits.total || 0)} Credits</h3></div><button id="refreshCreditBtn" class="secondary-btn" type="button">↻ Refresh</button></div><div class="usage-foot">Daily: ${Number(credits.daily || 0)} · Purchased: ${Number(credits.purchased || 0)} · Daily reset: ${credits.resetAt ? escapeHtml(formatDate(credits.resetAt)) : "24 hours"}</div>` : `<div class="empty">Google Login ဝင်ပြီး Credit ကြည့်ပါ။</div>`;
-  $("#refreshCreditBtn")?.addEventListener("click", async (e) => { const b=e.currentTarget; b.disabled=true; b.textContent="Refreshing…"; try { await loadUsage(); } finally { const fresh=$("#refreshCreditBtn"); if(fresh){fresh.disabled=false;fresh.textContent="↻ Refresh";} } });
-  if (!grid) return;
-  grid.innerHTML = packs.map(p => `<div class="plan-card"><div class="plan-badge">CREDIT PACK</div><h3>${p.credits} Credits</h3><div class="plan-price">${escapeHtml(p.price)}</div><ul><li>One-time purchase</li><li>Admin approval required</li></ul><button class="primary-btn credit-buy-btn" data-pack="${escapeHtml(p.id)}" type="button">ဝယ်ယူမည်</button></div>`).join("");
-  grid.querySelectorAll(".credit-buy-btn").forEach(btn => btn.addEventListener("click", () => openCreditPurchase(btn.dataset.pack, packs)));
-}
-async function openCreditPurchase(creditPackId, packs) {
-  const pack = packs.find(p => p.id === creditPackId); if (!pack) return;
-  const modal = $("#purchaseModal"), body = $("#purchaseBody");
-  $("#purchaseTitle").textContent = `${pack.credits} Credits — Purchase`;
-  body.innerHTML = `<p><strong>Credit:</strong> ${pack.credits}</p><p><strong>Price:</strong> ${escapeHtml(pack.price)}</p><p>အရင် Plan ဝယ်ရာတွင် အသုံးပြုသည့် ငွေပေးချေမှုနည်းလမ်းကိုပဲ အသုံးပြုပါ။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။</p><button id="createOrderBtn" class="primary-btn google-custom-btn" type="button">Create Order</button><div id="orderResult" class="payment-result"></div>`;
-  modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
-  $("#createOrderBtn").addEventListener("click", async () => {
-    const btn = $("#createOrderBtn");
-    if (btn.dataset.busy === "1" || btn.dataset.created === "1") return;
-    btn.dataset.busy = "1"; btn.disabled = true; btn.textContent = "Creating...";
-    const result = $("#orderResult"); result.textContent = "Order ဖန်တီးနေပါတယ်…";
-    try {
-      const r = await fetch(apiUrl("/api/purchase"), {method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({creditPackId})});
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) throw new Error(d.error || `Order မဖန်တီးနိုင်ပါ (${r.status})`);
-      const wave = d.wavePayPhone ? `<div class="wavepay-box"><strong>WavePay</strong><div class="wave-number">${escapeHtml(d.wavePayPhone)}</div>${d.wavePayName ? `<div>${escapeHtml(d.wavePayName)}</div>` : ""}<div>ပေးရန် — <strong>${escapeHtml(d.price)}</strong></div></div>` : "";
-      result.innerHTML = `<div class="order-box"><strong>Order ID</strong><code>${escapeHtml(d.orderId)}</code>${wave}<p>${escapeHtml(d.instructions || "ငွေလွှဲပြီး Transaction ID နှင့် Screenshot တင်ပါ။ Admin က အတည်ပြုပေးပါမည်။")}</p><label>Transaction ID<input id="paymentTxId" class="payment-input" placeholder="ဥပမာ TX123456"></label><label>ငွေလွှဲ Screenshot<input id="paymentShot" class="payment-input" type="file" accept="image/*"></label><button id="submitPaymentBtn" class="primary-btn google-custom-btn" type="button">Submit Payment</button><div id="submitPaymentStatus" class="small-note"></div></div>`;
-      btn.dataset.created = "1"; btn.textContent = "Order Created ✓";
-      $("#submitPaymentBtn").addEventListener("click", async () => {
-        const submitBtn = $("#submitPaymentBtn"), status = $("#submitPaymentStatus");
-        const tx = $("#paymentTxId").value.trim(), file = $("#paymentShot").files[0];
-        if (!tx || !file) { status.textContent = "Transaction ID နဲ့ Screenshot နှစ်ခုလုံးလိုပါတယ်။"; return; }
-        submitBtn.disabled = true; status.textContent = "Payment တင်နေပါတယ်…";
-        const reader = new FileReader();
-        reader.onload = async () => {
-          try {
-            const rr = await fetch(apiUrl("/api/purchase/submit"), {method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({transactionId:tx,screenshot:reader.result})});
-            const dd = await rr.json().catch(() => ({}));
-            if (!rr.ok || !dd.ok) throw new Error(dd.error || `Payment တင်မရပါ (${rr.status})`);
-            status.textContent = dd.message || "Payment တင်ပြီးပါပြီ။ Admin အတည်ပြုရန် စောင့်ပါ။";
-          } catch (e) { status.textContent = e.message; submitBtn.disabled = false; }
-        };
-        reader.onerror = () => { status.textContent = "Screenshot ဖတ်မရပါ။ ထပ်ရွေးပါ။"; submitBtn.disabled = false; };
-        reader.readAsDataURL(file);
-      });
-    } catch (e) {
-      result.textContent = e.message || "Order ဖန်တီးရာတွင် အမှားဖြစ်နေပါတယ်။";
-      btn.disabled = false; btn.textContent = "Create Order";
-    } finally { btn.dataset.busy = "0"; }
-  });
-}
-
 async function openPurchase(planId, plans) {
   const plan = plans.find(x => x.id === planId);
   if (!plan) return;
@@ -1143,9 +1088,7 @@ function setupRecapUI() {
 setupRecapUI();
 
 
-// Server-side Recap export: upload the source video and script to Render.
-// The phone does not encode frames; the server creates the MP4 and charges only
-// after a valid output file has been produced.
+// Recap video export: upload source to the server so the phone does not encode video locally.
 function setupRecapVideoExport() {
   const btn = document.querySelector('#exportRecapVideoBtn');
   if (!btn || btn.dataset.bound === '1') return;
@@ -1155,61 +1098,54 @@ function setupRecapVideoExport() {
     const script = document.querySelector('#recapScript')?.value?.trim() || '';
     const status = document.querySelector('#recapStatus');
     const setStatus = value => { if (status) status.textContent = value; };
-    if (!file) { setStatus('Video file ကို အရင်ရွေးပေးပါ။'); return; }
-    if (!script) { setStatus('Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။'); return; }
-    if (file.size > 500 * 1024 * 1024) { setStatus('Video ဖိုင်သည် 500 MB ထက်ကြီးနေပါတယ်။ ပိုသေးတဲ့ Video ကိုရွေးပါ။'); return; }
-
+    if (!file) { setStatus('Video ဖိုင်ကို အရင်ရွေးပေးပါ။'); return; }
+    if (!script) { setStatus('Recap Script ကို အရင်ထည့်ပေးပါ။'); return; }
+    if (file.size > 150 * 1024 * 1024) { setStatus('Video ဖိုင်သည် 150 MB ထက်ကြီးနေပါတယ်။ ဖိုင်အရွယ်အစားလျှော့ပြီး ပြန်စမ်းပါ။'); return; }
     btn.disabled = true;
     const oldText = btn.textContent;
-    btn.textContent = 'Uploading / Exporting…';
+    let resultUrl = '';
     try {
-      setStatus('Video ကို Render Server ဆီ ပို့နေပါတယ်… ဖုန်းကို ဆက်ဖွင့်ထားပါ။');
-      const form = new FormData();
-      form.append('video', file, file.name || 'source-video');
-      form.append('script', script);
-      form.append('voice', document.querySelector('#recapVoice')?.value || 'female');
-      form.append('rate', document.querySelector('#recapVoiceRate')?.value || '-5%');
-      form.append('subtitle', document.querySelector('#recapSubtitle')?.checked ? 'true' : 'false');
-
-      setStatus('Server မှာ မြန်မာအသံဖန်တီးပြီး Video + Audio ကို MP4 အဖြစ် ပေါင်းနေပါတယ်…');
-      const response = await fetch(apiUrl('/api/recap/export'), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: form
+      setStatus('Video ကို Server ဆီ ပို့နေပါတယ်… ဖုန်းမှာ encoding မလုပ်ပါ။');
+      const params = new URLSearchParams({
+        script,
+        voice: document.querySelector('#recapVoice')?.value || 'female',
+        rate: document.querySelector('#recapVoiceRate')?.value || '-5%'
       });
-      const contentType = response.headers.get('content-type') || '';
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.ok || !data.downloadUrl) {
-        const detail = data.credits?.total !== undefined ? ` (Server Credit: ${data.credits.total})` : '';
-        throw new Error((data.error || 'Server-side Video Export မအောင်မြင်ပါ။') + detail);
+      const response = await fetch(apiUrl('/api/recap/export?' + params.toString()), {
+        method: 'POST',
+        headers: authHeaders({'Content-Type': 'application/octet-stream'}),
+        body: file
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || `Server Export မအောင်မြင်ပါ (HTTP ${response.status})`);
       }
+      setStatus('Server က Video နဲ့ မြန်မာအသံကို ပေါင်းစပ်နေပါတယ်… ခဏစောင့်ပါ။');
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('Video ဖိုင်အလွတ် ပြန်ရလာပါတယ်။ ထပ်စမ်းကြည့်ပါ။');
+      resultUrl = URL.createObjectURL(blob);
       const preview = document.querySelector('#recapExportPreview');
       const player = document.querySelector('#recapExportPlayer');
       const download = document.querySelector('#recapExportDownload');
-      const downloadUrl = apiUrl(data.downloadUrl);
-      const previewUrl = apiUrl(data.previewUrl || data.downloadUrl + '?preview=1');
       if (player && preview) {
-        player.src = previewUrl;
+        if (player.src && player.src.startsWith('blob:')) URL.revokeObjectURL(player.src);
+        player.src = resultUrl;
         preview.hidden = false;
-        if (download) {
-          download.href = downloadUrl;
-          download.removeAttribute('download');
-          download.textContent = 'Download MP4';
-        }
-        preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (download) { download.href = resultUrl; download.download = 'james-ai-myanmar-recap.mp4'; }
+        preview.scrollIntoView({behavior: 'smooth', block: 'start'});
+        setStatus('Video Export ပြီးပါပြီ။ MP4 ဖိုင်ကို အောက်က Download video ကိုနှိပ်ပြီး သိမ်းနိုင်ပါတယ်။');
       } else {
-        window.location.assign(downloadUrl);
+        const a = document.createElement('a'); a.href = resultUrl; a.download = 'james-ai-myanmar-recap.mp4';
+        document.body.appendChild(a); a.click(); a.remove();
+        setStatus('Video Export ပြီးပါပြီ။');
       }
-      await loadUsage().catch(() => {});
-      setStatus(`Video Export ပြီးပါပြီ။ Server က MP4 ကို တိုက်ရိုက်ပို့ပေးပါမယ်။ Download လင့်ခ်သည် 15 မိနစ်အတွင်း သက်တမ်းကုန်ပါမယ်။ Credit ကျန်: ${Number(data.creditsRemaining ?? data.credits?.total ?? 0)}`);
     } catch (error) {
-      setStatus('Export မအောင်မြင်ပါ: ' + (error?.message || 'Server / FFmpeg / Edge TTS ကို စစ်ပါ။'));
+      setStatus('Export မအောင်မြင်ပါ: ' + (error?.message || 'Internet / Server ကို စစ်ပါ။'));
     } finally {
       btn.disabled = false;
-      btn.textContent = oldText || 'Export recap video';
+      btn.textContent = oldText;
     }
   });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupRecapVideoExport);
 else setupRecapVideoExport();
-

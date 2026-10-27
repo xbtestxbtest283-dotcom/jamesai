@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <script>window.JAMESAI_API_BASE_URL = "";</script>
   <meta name="theme-color" content="#0b0d12">
-  <link rel="stylesheet" href="style.css?v=recap-server-export-1">
+  <link rel="stylesheet" href="style.css">
 <style>
 #recapView{background:radial-gradient(ellipse at 90% 0%,rgba(120,20,91,.32),transparent 42%),radial-gradient(ellipse at 0% 80%,rgba(0,128,88,.24),transparent 42%),#07080d!important;padding:0!important;min-height:100%;}
 #recapView .recap-shell{max-width:900px;margin:0 auto;padding:14px 16px 36px;color:#f5f5fb;background:transparent!important;}
@@ -162,8 +162,8 @@
         <section id="recapView" class="view">
           <div class="recap-shell">
             <div class="recap-topline">
-              <div class="recap-user"><span class="recap-avatar">J</span><strong>James Recap</strong></div>
-              <div class="recap-top-actions"><span class="recap-pill">Credit <b>∞</b></span><button type="button" class="recap-pill" data-view="plans">💳 Plans</button><span class="recap-profile">J</span></div>
+              <div class="recap-user"><span class="recap-avatar">N</span><strong>James Recap</strong></div>
+              <div class="recap-top-actions"><span class="recap-pill">Credit <b>∞</b></span><button type="button" class="recap-pill" data-view="plans">💳 Plans</button><span class="recap-profile">N</span></div>
             </div>
             <div class="recap-hero"><h2>James <span>Recap</span></h2><p>သင့်အတွက် AI Video & Voice Tools</p></div>
             <button type="button" class="recap-tool-card" id="openMovieRecap">
@@ -183,7 +183,7 @@
               <div class="recap-checks"><label><input type="checkbox" id="recapOverlay"> Overlay</label><label><input type="checkbox" id="recapFreeze"> Freeze frame</label><label><input type="checkbox" id="recapSubtitle" checked> Subtitle</label></div>
               <button type="button" class="primary-btn" id="prepareRecapBtn">Prepare recap</button>
               <button type="button" class="primary-btn" id="exportRecapVideoBtn">Export recap video</button>
-<div id="recapExportPreview" class="recap-export-preview" hidden style="margin-top:16px;padding:12px;border:1px solid #343746;border-radius:16px;background:#080b12"><h3 style="margin:0 0 10px">Myanmar Recap Video</h3><video id="recapExportPlayer" controls playsinline style="width:100%;max-height:65vh;border-radius:12px;background:#000"></video><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><a id="recapExportDownload" class="primary-btn" download="james-ai-myanmar-recap.mp4">Download MP4</a></div></div><p class="recap-status" id="recapStatus" role="status">API မချိတ်ဆက်ရသေးပါ — လက်ရှိမှာ file ရွေးခြင်းနှင့် script ပြင်ဆင်ခြင်း UI သာ အလုပ်လုပ်ပါတယ်။</p>
+<div id="recapExportPreview" class="recap-export-preview" hidden style="margin-top:16px;padding:12px;border:1px solid #343746;border-radius:16px;background:#080b12"><h3 style="margin:0 0 10px">Myanmar Recap Video</h3><video id="recapExportPlayer" controls playsinline style="width:100%;max-height:65vh;border-radius:12px;background:#000"></video><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><a id="recapExportDownload" class="primary-btn" download="james-ai-myanmar-recap.webm">Download video</a></div></div><p class="recap-status" id="recapStatus" role="status">API မချိတ်ဆက်ရသေးပါ — လက်ရှိမှာ file ရွေးခြင်းနှင့် script ပြင်ဆင်ခြင်း UI သာ အလုပ်လုပ်ပါတယ်။</p>
             </div>
             <button type="button" class="recap-tool-card" id="openVoiceClone">
               <span class="recap-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg></span>
@@ -195,6 +195,7 @@
               <label class="recap-field-label" for="voiceText">ဖတ်စေလိုသော စာသား</label><textarea id="voiceText" class="recap-field" rows="4" placeholder="အသံဖတ်စေလိုသော စာသား ရိုက်ပါ..."></textarea>
               <label class="recap-field-label" for="voiceLanguage">Language</label><select id="voiceLanguage" class="recap-field"><option value="my">မြန်မာ</option><option value="en">English</option></select>
               <label class="recap-field-label" for="voiceGender">အသံအမျိုးအစား</label><select id="voiceGender" class="recap-field"><option value="female">အမျိုးသမီး (Nilar)</option><option value="male">အမျိုးသား (Thiha)</option></select>
+              <p class="recap-status">အခမဲ့ Browser TTS သည် ဖုန်း/ကွန်ပျူတာတွင် မြန်မာအသံရှိမှ အလုပ်လုပ်ပါမည်။ MP3 download အတွက် API လိုအပ်နိုင်ပါသည်။</p>
               <button type="button" class="primary-btn" id="prepareVoiceBtn">Prepare voiceover</button><p class="recap-status" id="voiceStatus" role="status">Edge TTS ဖြင့် အသံထုတ်ရန် အဆင်သင့်ဖြစ်ပါပြီ။</p>
             </div>
             <div class="recap-benefits"><h3>James AI မှာ အသုံးပြုနိုင်မယ့် Tools</h3><ul><li>AI Voice Clone & Text-to-Speech (TTS)</li><li>Subtitle ဖန်တီးခြင်းနှင့် ဘာသာပြန်ခြင်း</li><li>ဖုန်း၊ PC၊ Laptop များတွင် အသုံးပြုနိုင်ရန် Responsive UI</li><li>TikTok နှင့် YouTube အတွက် Export workflow — output quality သည် source video နှင့် API ပေါ်မူတည်သည်</li></ul></div>
@@ -246,7 +247,7 @@
     </div>
   </div>
   <div id="toast" class="toast hidden"></div>
-  <script src="script.js?v=recap-server-export-1"></script>
+  <script src="script.js?v=recap-audio-export-fix-20261024"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 
 <script>
