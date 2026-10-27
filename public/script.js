@@ -1140,10 +1140,10 @@ function setupRecapVideoExport() {
         const vr = await fetch(apiUrl('/api/voice'), {
           method:'POST',
           headers:authHeaders({'Content-Type':'application/json'}),
-          body:JSON.stringify({text:script, language:document.querySelector('#voiceLanguage')?.value || 'my', voice:document.querySelector('#voiceGender')?.value || 'female'})
+          body:JSON.stringify({text:script, language:'my', voice:document.querySelector('#recapVoice')?.value || 'female', rate:document.querySelector('#recapVoiceRate')?.value || '-5%'})
         });
         const vd = await vr.json().catch(()=>({}));
-        if (!vr.ok || !vd.ok || !vd.audio) throw new Error(vd.error || 'မြန်မာအသံ မထုတ်နိုင်ပါ။ ELEVENLABS_API_KEY နဲ့ ELEVENLABS_VOICE_ID ကို စစ်ပါ။');
+        if (!vr.ok || !vd.ok || !vd.audio) throw new Error(vd.error || 'Nilar / Thiha အသံ မထုတ်နိုင်ပါ။ Edge TTS service နဲ့ internet access ကို စစ်ပါ။');
         voiceUrl = vd.audio;
         window.jamesRecapVoiceUrl = voiceUrl;
         let voicePlayer = document.querySelector('#jamesRecapVoiceAudio');
@@ -1190,9 +1190,8 @@ function setupRecapVideoExport() {
           let done = false;
           const finish = () => { if (!done) { done=true; resolve(); } };
           video.onended = finish; video.onerror = finish;
-          voiceAudio.onended = finish;
-          // Do not stop before the video ends; if voice is shorter, keep video running.
-          if (voiceAudio.duration && video.duration && voiceAudio.duration >= video.duration) voiceAudio.onended = finish;
+          // Keep recording until the source video ends, even if narration finishes first.
+          // This avoids truncated exports when the voiceover is shorter than the video.
         });
         voiceAudio.pause();
       } else {
