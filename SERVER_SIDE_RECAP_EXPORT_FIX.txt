@@ -1,0 +1,24 @@
+James AI — Server-side Recap Export Fix
+
+This update changes James Recap video export to server-side processing:
+- Uploads the selected video and recap script to /api/recap/export.
+- Generates Nilar/Thiha narration with edge-tts on the server.
+- Encodes a smaller MP4 using imageio-ffmpeg.
+- Deducts exactly one James Recap credit only after MP4 creation succeeds.
+- Other features such as Chat, image generation, and voice preview do not consume James Recap credits.
+- James Recap avatar labels use J, and the browser script URL has a cache-busting version.
+
+GitHub files to update:
+1. server.js
+2. package.json
+3. requirements.txt
+4. render.yaml
+5. public/script.js
+6. public/index.html
+7. script.js and index.html (root duplicates, if these are tracked/deployed)
+
+Never upload .env, API keys, .git, or personal user records.
+Render build command should be: npm install && pip install -r requirements.txt
+Start command: npm start
+
+After deployment, test Google Login, open James Recap, choose a video and enter the recap script, then press Export recap video. A successful result should download/show an MP4. A credit is charged only when server-side export has produced the MP4.

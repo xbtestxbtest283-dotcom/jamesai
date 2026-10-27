@@ -3,7 +3,7 @@ services:
     name: james-ai
     runtime: node
     plan: free
-    buildCommand: npm ci && pip install -r requirements.txt
+    buildCommand: npm install && pip install -r requirements.txt
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:

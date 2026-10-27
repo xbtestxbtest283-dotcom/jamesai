@@ -8,6 +8,7 @@ import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { createClient } from "@supabase/supabase-js";
+import multer from "multer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,7 @@ const apiKey = String(process.env.OPENAI_API_KEY || "")
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const execFileAsync = promisify(execFile);
+const recapUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
 const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
@@ -631,24 +633,107 @@ Help with general questions, programming, study, translation, writing, math, exp
 });
 
 
-// Charge one James Recap credit only after a video export has completed successfully.
-app.post("/api/recap/export-complete", requireGoogleLogin, async (req, res) => {
+
+// Server-side James Recap export. The phone uploads the source video; Render
+// generates Burmese narration and creates the MP4. Credit is charged only after
+// FFmpeg has successfully created a non-empty output file.
+app.post("/api/recap/export", requireGoogleLogin, (req, res, next) => {
+  recapUpload.single("video")(req, res, (err) => {
+    if (err) {
+      const message = err.code === "LIMIT_FILE_SIZE"
+        ? "Video ဖိုင်သည် 500 MB ထက်ကြီးနေပါတယ်။ ပိုသေးတဲ့ Video ကို ရွေးပါ။"
+        : String(err.message || "Video upload မအောင်မြင်ပါ။");
+      return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ ok: false, error: message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  let tempDir = "";
   try {
     const user = req.appUser || makeUser(req.googleUser);
-    const exportId = String(req.body?.exportId || "").trim();
-    if (!exportId || exportId.length > 120) return res.status(400).json({ok:false,error:"Export ID မမှန်ပါ။ Video Export ကို ပြန်စမ်းပါ။"});
-    user.completedRecapExports = Array.isArray(user.completedRecapExports) ? user.completedRecapExports : [];
-    const totalBefore = Number(user.dailyCredits||0) + Number(user.purchasedCredits||0);
-    if (user.completedRecapExports.includes(exportId)) return res.json({ok:true,alreadyCharged:true,credits:{daily:Number(user.dailyCredits||0),purchased:Number(user.purchasedCredits||0),total:totalBefore}});
-    if (!hasCredits(user)) return res.status(429).json({ok:false,code:"NO_CREDITS",error:"Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:totalBefore}});
+    if (!req.file?.path) return res.status(400).json({ ok: false, error: "Video file ကို အရင်ရွေးပေးပါ။" });
+    if (!hasCredits(user)) {
+      return res.status(429).json({
+        ok: false, code: "NO_CREDITS",
+        error: "Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",
+        credits: { daily: Number(user.dailyCredits || 0), purchased: Number(user.purchasedCredits || 0) }
+      });
+    }
+    const script = String(req.body?.script || "").trim();
+    if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပေးပါ။" });
+    if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
+
+    const gender = String(req.body?.voice || "female").toLowerCase() === "male" ? "male" : "female";
+    const rateCandidate = String(req.body?.rate || "-5%");
+    const rate = ["-5%", "+0%", "+5%"].includes(rateCandidate) ? rateCandidate : "-5%";
+    const addSubtitle = String(req.body?.subtitle || "false") === "true";
+
+    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-recap-export-"));
+    const sourcePath = req.file.path;
+    const voicePath = path.join(tempDir, "narration.mp3");
+    const outputPath = path.join(tempDir, "james-ai-myanmar-recap.mp4");
+    const subtitlePath = path.join(tempDir, "recap.txt");
+    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
+
+    await execFileAsync(python, [
+      "-m", "edge_tts", "--voice",
+      gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural",
+      "--rate", rate, "--text", script, "--write-media", voicePath
+    ], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+
+    let videoFilter = "scale='min(960,iw)':-2,fps=20";
+    if (addSubtitle) {
+      await fs.promises.writeFile(subtitlePath, script.replace(/[\r\n]+/g, " ").slice(0, 1200), "utf8");
+      const fontCandidates = [
+        "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansMyanmar-VF.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+      ];
+      const fontPath = fontCandidates.find(p => fs.existsSync(p));
+      if (fontPath) {
+        const safe = p => p.replace(/\\/g, "/").replace(/:/g, "\\:");
+        videoFilter += `,drawtext=fontfile='${safe(fontPath)}':textfile='${safe(subtitlePath)}':fontcolor=white:fontsize=h/28:box=1:boxcolor=black@0.6:boxborderw=12:x=(w-text_w)/2:y=h-text_h-24`;
+      }
+    }
+    const args = [
+      "-y", "-i", sourcePath, "-i", voicePath,
+      "-map", "0:v:0", "-map", "1:a:0",
+      "-vf", videoFilter,
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+      "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath
+    ];
+
+    const ffmpegResult = await execFileAsync(python, [
+      "-c", "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+    ], { timeout: 30000, maxBuffer: 1024 * 1024 });
+    const ffmpegPath = String(ffmpegResult.stdout || "").trim();
+    if (!ffmpegPath) throw new Error("FFmpeg executable ကို မတွေ့ပါ။");
+    await execFileAsync(ffmpegPath, args, { timeout: 15 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
+
+    const stat = await fs.promises.stat(outputPath);
+    if (!stat.size) throw new Error("Export Video ဖိုင် မထွက်လာပါ။");
+
+    // Deduct only after successful MP4 creation.
     consumeCredit(user);
-    user.completedRecapExports.push(exportId);
-    if (user.completedRecapExports.length > 100) user.completedRecapExports = user.completedRecapExports.slice(-100);
     await saveUsers();
-    return res.json({ok:true,credits:{daily:Number(user.dailyCredits||0),purchased:Number(user.purchasedCredits||0),total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", 'attachment; filename="james-ai-myanmar-recap.mp4"');
+    res.setHeader("Content-Length", String(stat.size));
+    res.setHeader("X-JamesAI-Credits-Remaining", String(Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0)));
+    fs.createReadStream(outputPath).pipe(res);
+    res.on("close", () => {
+      if (tempDir) fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      if (sourcePath) fs.promises.rm(sourcePath, { force: true }).catch(() => {});
+    });
   } catch (error) {
-    console.error("RECAP CREDIT ERROR:", error);
-    return res.status(500).json({ok:false,error:"Credit update မအောင်မြင်ပါ။ ပြန်စမ်းပါ။"});
+    console.error("RECAP EXPORT ERROR:", error?.stderr || error);
+    if (!res.headersSent) res.status(500).json({ ok: false, error: String(error?.message || "Server-side Video Export မအောင်မြင်ပါ။") });
+  } finally {
+    if (!res.headersSent) {
+      if (req.file?.path) await fs.promises.rm(req.file.path, { force: true }).catch(() => {});
+      if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 });
 
@@ -662,8 +747,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
     if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
     const user = makeUser(req.googleUser);
-    if (!hasCredits(user)) return res.status(429).json({ok:false,code:"NO_CREDITS",error:"Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",credits:{daily:user.dailyCredits,purchased:user.purchasedCredits}});
-    if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
+    // Preparing recap text does not consume an export credit.
     const response = await client.responses.create({
       model,
       instructions: language === "en"
