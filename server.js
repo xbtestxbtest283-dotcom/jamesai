@@ -669,6 +669,52 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
   }
 });
 
+// Server-side recap export: heavy video encoding runs on the server, not the phone.
+// Upload the source video as application/octet-stream; output is MP4 (H.264/AAC).
+app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "application/octet-stream", limit: "150mb" }), async (req, res) => {
+  let tempDir = "";
+  try {
+    const input = req.body;
+    if (!Buffer.isBuffer(input) || !input.length) {
+      return res.status(400).json({ ok: false, error: "Video ဖိုင်ကို ပြန်ရွေးပြီး Export လုပ်ပါ။" });
+    }
+    const script = String(req.query.script || "").trim();
+    const gender = String(req.query.voice || "female").toLowerCase() === "male" ? "male" : "female";
+    const rateValue = String(req.query.rate || "-5%");
+    const rate = ["-5%", "+0%", "+5%"].includes(rateValue) ? rateValue : "-5%";
+    if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။" });
+    if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
+    const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-export-"));
+    const inputPath = path.join(tempDir, "source-video");
+    const voicePath = path.join(tempDir, "voice.mp3");
+    const outputPath = path.join(tempDir, "recap.mp4");
+    await fs.promises.writeFile(inputPath, input);
+    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
+    const voice = gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural";
+    await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", script, "--write-media", voicePath], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale='min(960,iw)':-2", "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
+    await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
+    const stat = await fs.promises.stat(outputPath);
+    if (!stat.size) throw new Error("FFmpeg returned an empty video.");
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", 'attachment; filename="james-ai-myanmar-recap.mp4"');
+    res.setHeader("Content-Length", String(stat.size));
+    const stream = fs.createReadStream(outputPath);
+    await new Promise((resolve, reject) => {
+      stream.on("error", reject);
+      res.on("finish", resolve);
+      stream.pipe(res);
+    });
+  } catch (error) {
+    console.error("RECAP EXPORT ERROR:", error?.stderr || error);
+    const message = String(error?.stderr || error?.message || "Video export failed").trim().slice(0, 500);
+    if (!res.headersSent) res.status(502).json({ ok: false, error: `Server Video Export မအောင်မြင်ပါ။ Render မှာ ffmpeg နှင့် edge-tts ရှိမှုကို စစ်ပါ။ ${message}` });
+  } finally {
+    if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
 app.post("/api/images", requireGoogleLogin, async (req, res) => {
   try {
     if (!pollinationsApiKey) {
