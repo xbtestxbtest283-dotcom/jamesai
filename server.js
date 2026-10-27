@@ -57,6 +57,14 @@ const PLANS = {
   pro30: { id: "pro30", name: "Plus Pro", durationDays: 30, messages: Number(process.env.PRO_MESSAGE_LIMIT || 500), images: Number(process.env.PRO_IMAGE_LIMIT || 50) }
 };
 
+const CREDIT_PACKS = [
+  { id: "credits30", credits: 30, price: "5,500 MMK" },
+  { id: "credits75", credits: 75, price: "10,000 MMK" },
+  { id: "credits100", credits: 100, price: "15,000 MMK" },
+  { id: "credits300", credits: 300, price: "35,000 MMK" },
+  { id: "credits500", credits: 500, price: "55,000 MMK" },
+  { id: "credits1000", credits: 1000, price: "150,000 MMK" }
+];
 const PLAN_PRICES = {
   plus7: String(process.env.PLAN_PLUS7_PRICE || "SET PRICE"),
   plus15: String(process.env.PLAN_PLUS15_PRICE || "SET PRICE"),
@@ -171,9 +179,14 @@ function makeUser(user) {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
     plan: "free", planStartedAt: null, planExpiresAt: null,
     messageCount: 0, imageCount: 0, windowStartedAt: null, freeResetAt: null,
-    pendingPurchase: null
+    pendingPurchase: null, dailyCredits: 3, dailyCreditsResetAt: nowMs() + QUOTA_WINDOW_MS, purchasedCredits: 0
   };
   existing.email = user.email; existing.name = user.name; existing.picture = user.picture;
+  if (!Number.isFinite(Number(existing.dailyCredits))) existing.dailyCredits = 3;
+  if (!Number.isFinite(Number(existing.purchasedCredits))) existing.purchasedCredits = 0;
+  if (!existing.dailyCreditsResetAt || now >= Number(existing.dailyCreditsResetAt)) {
+    existing.dailyCredits = 3; existing.dailyCreditsResetAt = now + QUOTA_WINDOW_MS;
+  }
   const now = nowMs();
   if (existing.plan !== "free" && existing.planExpiresAt && now >= existing.planExpiresAt) {
     // Paid plan has ended: return to Free and reset all paid-plan counters.
@@ -243,6 +256,11 @@ function incrementUsage(user, kind) {
   if (user.plan === "free" && (user.messageCount >= p.messages || user.imageCount >= p.images)) {
     user.freeResetAt = nowMs() + QUOTA_WINDOW_MS;
   }
+}
+function hasCredits(user) { return Number(user.dailyCredits || 0) + Number(user.purchasedCredits || 0) > 0; }
+function consumeCredit(user) {
+  if (Number(user.dailyCredits || 0) > 0) user.dailyCredits -= 1;
+  else if (Number(user.purchasedCredits || 0) > 0) user.purchasedCredits -= 1;
 }
 function paymentInfoFor(planId, user) {
   return {
@@ -448,28 +466,28 @@ app.get("/api/health", (_req, res) => {
 
 
 app.get("/api/plans", (_req, res) => {
-  res.json({ ok: true, plans: planList() });
+  res.json({ ok: true, plans: planList(), creditPacks: CREDIT_PACKS });
 });
 
 app.get("/api/usage", requireGoogleLogin, async (req, res) => {
   const user = req.appUser;
   await saveUsers();
-  res.json({ ok:true, plan:publicPlan(user), plans:planList(), pendingPurchase:user.pendingPurchase || null });
+  res.json({ ok:true, plan:publicPlan(user), plans:planList(), creditPacks:CREDIT_PACKS, credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0),resetAt:user.dailyCreditsResetAt}, pendingPurchase:user.pendingPurchase || null });
 });
 
 app.post("/api/purchase", requireGoogleLogin, async (req, res) => {
   const planId = String(req.body?.planId || "").trim();
-  if (!["plus7","plus15","pro30"].includes(planId)) {
-    return res.status(400).json({ok:false,error:"Invalid plan."});
-  }
+  const creditPackId = String(req.body?.creditPackId || "").trim();
+  const pack = CREDIT_PACKS.find(p => p.id === creditPackId);
+  if (!pack && !["plus7","plus15","pro30"].includes(planId)) return res.status(400).json({ok:false,error:"Invalid plan or credit pack."});
   const user = req.appUser;
   const orderId = `JAI-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  user.pendingPurchase = {
-    orderId, planId, createdAt: nowMs(), status:"pending",
-    price: PLAN_PRICES[planId]
-  };
+  user.pendingPurchase = pack
+    ? { orderId, orderType:"credit", creditPackId:pack.id, credits:pack.credits, createdAt:nowMs(), status:"pending", price:pack.price }
+    : { orderId, orderType:"plan", planId, createdAt:nowMs(), status:"pending", price:PLAN_PRICES[planId] };
   await saveUsers();
-  res.json({ok:true, orderId, ...paymentInfoFor(planId,user)});
+  const info = paymentInfoFor(pack ? "credit" : planId,user);
+  res.json({ok:true, orderId, plan:pack ? pack.id : planId, price:pack ? pack.price : PLAN_PRICES[planId], paymentUrl:pack ? "" : PAYMENT_URLS[planId], wavePayPhone:info.wavePayPhone, wavePayName:info.wavePayName, instructions:info.instructions});
 });
 
 app.post("/api/purchase/submit", requireGoogleLogin, async (req, res) => {
@@ -517,9 +535,17 @@ app.post("/api/admin/activate", async (req, res) => {
   const sub = String(req.body?.sub || "").trim();
   const email = String(req.body?.email || "").trim().toLowerCase();
   const planId = String(req.body?.planId || "").trim();
-  if ((!sub && !email) || !PLANS[planId] || planId === "free") return res.status(400).json({ok:false,error:"Invalid user or plan."});
   const user = sub ? users[sub] : Object.values(users).find(x => String(x.email || "").toLowerCase() === email);
   if (!user) return res.status(404).json({ok:false,error:"User not found."});
+  if (user.pendingPurchase?.orderType === "credit") {
+    const pack = CREDIT_PACKS.find(p => p.id === user.pendingPurchase.creditPackId);
+    if (!pack) return res.status(400).json({ok:false,error:"Invalid credit pack."});
+    user.purchasedCredits = Number(user.purchasedCredits || 0) + pack.credits;
+    user.pendingPurchase = null;
+    await saveUsers();
+    return res.json({ok:true, credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
+  }
+  if (!PLANS[planId] || planId === "free") return res.status(400).json({ok:false,error:"Invalid user or plan."});
   const start = nowMs();
   user.plan = planId;
   user.planStartedAt = start;
@@ -613,6 +639,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
     if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
     const user = makeUser(req.googleUser);
+    if (!hasCredits(user)) return res.status(429).json({ok:false,code:"NO_CREDITS",error:"Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",credits:{daily:user.dailyCredits,purchased:user.purchasedCredits}});
     if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
     const response = await client.responses.create({
       model,
@@ -623,7 +650,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     });
     const recap = String(response.output_text || "").trim();
     if (!recap) return res.status(502).json({ok:false,error:"OpenAI က recap မပြန်လာပါ။"});
-    incrementUsage(user, "message"); await saveUsers();
+    incrementUsage(user, "message"); consumeCredit(user); await saveUsers();
     res.json({ok:true, recap, usage:publicPlan(user)});
   } catch (error) {
     console.error("RECAP ERROR:", error);
@@ -664,52 +691,6 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
     console.error("VOICE ERROR:", error?.stderr || error);
     const detail = String(error?.stderr || error?.message || "Voice generation error").trim().slice(0, 500);
     res.status(502).json({ ok: false, error: `Edge TTS မအောင်မြင်ပါ။ Python/edge-tts install ဖြစ်မှုနှင့် internet access ကိုစစ်ပါ။ ${detail}` });
-  } finally {
-    if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
-});
-
-// Server-side recap export: heavy video encoding runs on the server, not the phone.
-// Upload the source video as application/octet-stream; output is MP4 (H.264/AAC).
-app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "application/octet-stream", limit: "150mb" }), async (req, res) => {
-  let tempDir = "";
-  try {
-    const input = req.body;
-    if (!Buffer.isBuffer(input) || !input.length) {
-      return res.status(400).json({ ok: false, error: "Video ဖိုင်ကို ပြန်ရွေးပြီး Export လုပ်ပါ။" });
-    }
-    const script = String(req.query.script || "").trim();
-    const gender = String(req.query.voice || "female").toLowerCase() === "male" ? "male" : "female";
-    const rateValue = String(req.query.rate || "-5%");
-    const rate = ["-5%", "+0%", "+5%"].includes(rateValue) ? rateValue : "-5%";
-    if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။" });
-    if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
-    const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
-    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-export-"));
-    const inputPath = path.join(tempDir, "source-video");
-    const voicePath = path.join(tempDir, "voice.mp3");
-    const outputPath = path.join(tempDir, "recap.mp4");
-    await fs.promises.writeFile(inputPath, input);
-    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
-    const voice = gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural";
-    await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", script, "--write-media", voicePath], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale='min(960,iw)':-2", "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
-    await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
-    const stat = await fs.promises.stat(outputPath);
-    if (!stat.size) throw new Error("FFmpeg returned an empty video.");
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", 'attachment; filename="james-ai-myanmar-recap.mp4"');
-    res.setHeader("Content-Length", String(stat.size));
-    const stream = fs.createReadStream(outputPath);
-    await new Promise((resolve, reject) => {
-      stream.on("error", reject);
-      res.on("finish", resolve);
-      stream.pipe(res);
-    });
-  } catch (error) {
-    console.error("RECAP EXPORT ERROR:", error?.stderr || error);
-    const message = String(error?.stderr || error?.message || "Video export failed").trim().slice(0, 500);
-    if (!res.headersSent) res.status(502).json({ ok: false, error: `Server Video Export မအောင်မြင်ပါ။ Render မှာ ffmpeg နှင့် edge-tts ရှိမှုကို စစ်ပါ။ ${message}` });
   } finally {
     if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
