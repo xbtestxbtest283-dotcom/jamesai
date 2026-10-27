@@ -631,6 +631,20 @@ Help with general questions, programming, study, translation, writing, math, exp
 });
 
 
+// Charge one James Recap credit only after a video export has completed successfully.
+app.post("/api/recap/export-complete", requireGoogleLogin, async (req, res) => {
+  try {
+    const user = req.appUser || makeUser(req.googleUser);
+    if (!hasCredits(user)) return res.status(429).json({ok:false,code:"NO_CREDITS",error:"Credit မလုံလောက်ပါ။ Plans ထဲမှ Credit ဝယ်ယူပါ။",credits:{daily:user.dailyCredits,purchased:user.purchasedCredits,total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
+    consumeCredit(user);
+    await saveUsers();
+    return res.json({ok:true,credits:{daily:Number(user.dailyCredits||0),purchased:Number(user.purchasedCredits||0),total:Number(user.dailyCredits||0)+Number(user.purchasedCredits||0)}});
+  } catch (error) {
+    console.error("RECAP CREDIT ERROR:", error);
+    return res.status(500).json({ok:false,error:"Credit update မအောင်မြင်ပါ။ ပြန်စမ်းပါ။"});
+  }
+});
+
 // AI recap preparation: summarizes supplied transcript/script using OpenAI.
 // Video files themselves are not directly decoded here; provide transcript/subtitle text.
 app.post("/api/recap", requireGoogleLogin, async (req, res) => {
@@ -652,7 +666,6 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     });
     const recap = String(response.output_text || "").trim();
     if (!recap) return res.status(502).json({ok:false,error:"OpenAI က recap မပြန်လာပါ။"});
-    incrementUsage(user, "message"); consumeCredit(user); await saveUsers();
     res.json({ok:true, recap, usage:publicPlan(user)});
   } catch (error) {
     console.error("RECAP ERROR:", error);
