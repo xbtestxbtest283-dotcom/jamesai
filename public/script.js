@@ -1009,6 +1009,51 @@ initAuthentication();
 
 // James Recap + ElevenLabs voiceover integration
 function setupRecapUI() {
+  const refreshCreditBalance = async () => {
+    const el = document.querySelector('#recapCreditBalance');
+    if (!el) return;
+    try {
+      const r = await fetch(apiUrl('/api/credits'), {headers:authHeaders()});
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || 'Credit refresh failed');
+      el.textContent = String(d.credits);
+    } catch (e) { toast('Credit မဖတ်နိုင်ပါ: ' + e.message); }
+  };
+  document.querySelector('#refreshRecapCredits')?.addEventListener('click', refreshCreditBalance);
+  document.querySelector('#openCreditShop')?.addEventListener('click', () => {
+    if (document.querySelector('#creditShopModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'creditShopModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000b;display:grid;place-items:center;padding:16px;overflow:auto';
+    modal.innerHTML = `<section style="background:#111522;color:#fff;border:1px solid #393d50;border-radius:18px;padding:20px;width:min(100%,460px);max-height:92vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 style="margin:0">James Recap Credit</h2><button type="button" id="closeCreditShop" style="padding:8px 12px">✕</button></div>
+      <p>နေ့စဉ် Credit 3 ခု အခမဲ့ရရှိမည်။ Credit သည် James Recap Tools နှစ်ခုအတွက်သာ ဖြစ်ပြီး Chat နှင့် AI Image Generator ကို မသက်ရောက်ပါ။</p>
+      <label style="display:block;margin:10px 0">Name (ဝယ်ယူစဉ် အသုံးပြုသောအမည်)<input id="creditBuyerName" autocomplete="name" style="display:block;width:100%;padding:12px;margin-top:5px;border-radius:8px"></label>
+      <label style="display:block;margin:10px 0">ဖုန်းနံပါတ် (ဝယ်ယူစဉ် အသုံးပြုသောနံပါတ်)<input id="creditBuyerPhone" type="tel" autocomplete="tel" style="display:block;width:100%;padding:12px;margin-top:5px;border-radius:8px"></label>
+      <div id="creditPackList" style="display:grid;gap:8px;margin:14px 0">
+      ${[['credit30',30,5500],['credit50',50,15000],['credit100',100,25000],['credit300',300,35000],['credit500',500,55000],['credit1000',1000,150000]].map(([id,c,p])=>`<button type="button" data-pack="${id}" style="padding:13px;border-radius:10px;background:#24283a;color:#fff;border:1px solid #484d66;text-align:left">Credit ${c} — ${Number(p).toLocaleString()} MMK</button>`).join('')}
+      </div><div id="creditOrderStatus" aria-live="polite"></div>
+    </section>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#closeCreditShop').onclick = () => modal.remove();
+    modal.querySelectorAll('[data-pack]').forEach(btn => btn.addEventListener('click', async () => {
+      const name = modal.querySelector('#creditBuyerName').value.trim();
+      const phone = modal.querySelector('#creditBuyerPhone').value.trim();
+      const status = modal.querySelector('#creditOrderStatus');
+      if (!name || !phone) { status.textContent = 'Name နဲ့ ဖုန်းနံပါတ် ဖြည့်ပါ။'; return; }
+      modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = true);
+      status.textContent = 'Order ဖန်တီးနေပါတယ်…';
+      try {
+        const r = await fetch(apiUrl('/api/credits/order'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({packId:btn.dataset.pack,name,phone})});
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || 'Order ဖန်တီးမရပါ။');
+        status.innerHTML = `<p><b>Order ID:</b> ${escapeHtml(d.orderId)}</p><p>Credit ${d.credits} · ${Number(d.price).toLocaleString()} MMK</p><p>${escapeHtml(d.instructions)}</p><p>Admin အတည်ပြုပြီးမှ Credit ရရှိပါမည်။</p>`;
+      } catch(e) { status.textContent = e.message; modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = false); }
+    }));
+  });
+  window.refreshRecapCreditBalance = refreshCreditBalance;
+  refreshCreditBalance();
+
   const moviePanel = document.querySelector('#movieRecapPanel');
   const voicePanel = document.querySelector('#voiceClonePanel');
   document.querySelector('#openMovieRecap')?.addEventListener('click', () => moviePanel?.classList.toggle('hidden'));
@@ -1034,7 +1079,7 @@ function setupRecapUI() {
       const d = await r.json().catch(()=>({}));
       if(!r.ok || !d.ok) throw new Error(d.error || 'Recap မအောင်မြင်ပါ။');
       document.querySelector('#recapScript').value = d.recap;
-      if(status) status.textContent = 'Recap အောင်မြင်ပါပြီ။ စာသားကို ပြင်ဆင်နိုင်ပါတယ်။';
+      if(status) status.textContent = 'Recap အောင်မြင်ပါပြီ။ စာသားကို ပြင်ဆင်နိုင်ပါတယ်။'; window.refreshRecapCreditBalance?.();
      } catch(e) {
       if (status) status.textContent = `Recap API မအောင်မြင်ပါ: ${e.message}. OpenAI/API ချိတ်ဆက်မှုကို စစ်ပါ။`;
     }
@@ -1054,7 +1099,7 @@ function setupRecapUI() {
       let player = document.querySelector('#jamesVoiceAudio');
       if(!player) { player = document.createElement('audio'); player.id='jamesVoiceAudio'; player.controls=true; player.style.display='block'; player.style.width='100%'; btn.insertAdjacentElement('afterend',player); }
       player.src = d.audio;
-      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။';
+      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။'; window.refreshRecapCreditBalance?.();
       let link = document.querySelector('#jamesVoiceDownload');
       if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
       link.href=d.audio; link.download='james-voiceover.mp3';
