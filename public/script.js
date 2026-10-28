@@ -1025,30 +1025,47 @@ function setupRecapUI() {
     const modal = document.createElement('div');
     modal.id = 'creditShopModal';
     modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000b;display:grid;place-items:center;padding:16px;overflow:auto';
-    modal.innerHTML = `<section style="background:#111522;color:#fff;border:1px solid #393d50;border-radius:18px;padding:20px;width:min(100%,460px);max-height:92vh;overflow:auto">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 style="margin:0">James Recap Credit</h2><button type="button" id="closeCreditShop" style="padding:8px 12px">✕</button></div>
-      <p>နေ့စဉ် Credit 3 ခု အခမဲ့ရရှိမည်။ Credit သည် James Recap Tools နှစ်ခုအတွက်သာ ဖြစ်ပြီး Chat နှင့် AI Image Generator ကို မသက်ရောက်ပါ။</p>
-      <label style="display:block;margin:10px 0">Name (ဝယ်ယူစဉ် အသုံးပြုသောအမည်)<input id="creditBuyerName" autocomplete="name" style="display:block;width:100%;padding:12px;margin-top:5px;border-radius:8px"></label>
-      <label style="display:block;margin:10px 0">ဖုန်းနံပါတ် (ဝယ်ယူစဉ် အသုံးပြုသောနံပါတ်)<input id="creditBuyerPhone" type="tel" autocomplete="tel" style="display:block;width:100%;padding:12px;margin-top:5px;border-radius:8px"></label>
+    modal.innerHTML = `<section style="background:#111522;color:#fff;border:1px solid #393d50;border-radius:24px;padding:22px;width:min(100%,460px);max-height:92vh;overflow:auto;box-sizing:border-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 style="margin:0">James Recap Credit</h2><button type="button" id="closeCreditShop" aria-label="Close" style="padding:8px 12px">✕</button></div>
+      <p style="color:#c3c6d1;line-height:1.7">Credit ကိုရွေးပြီး Create Order နှိပ်ပါ။ Plus Pro ဝယ်ယူရာတွင် သတ်မှတ်ထားသော WavePay အမည်နှင့် ဖုန်းနံပါတ်အတိုင်း ငွေလွှဲနိုင်ပါသည်။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။</p>
       <div id="creditPackList" style="display:grid;gap:8px;margin:14px 0">
-      ${[['credit30',30,5500],['credit50',50,15000],['credit100',100,25000],['credit300',300,35000],['credit500',500,55000],['credit1000',1000,150000]].map(([id,c,p])=>`<button type="button" data-pack="${id}" style="padding:13px;border-radius:10px;background:#24283a;color:#fff;border:1px solid #484d66;text-align:left">Credit ${c} — ${Number(p).toLocaleString()} MMK</button>`).join('')}
-      </div><div id="creditOrderStatus" aria-live="polite"></div>
+      ${[['credit30',30,5500],['credit50',50,15000],['credit100',100,25000],['credit300',300,35000],['credit500',500,55000],['credit1000',1000,150000]].map(([id,c,p])=>`<button type="button" data-pack="${id}" aria-pressed="false" style="padding:15px;border-radius:14px;background:#24283a;color:#fff;border:1px solid #484d66;text-align:left;font-size:16px">Credit ${c} — ${Number(p).toLocaleString()} MMK</button>`).join('')}
+      </div>
+      <button type="button" id="createCreditOrderBtn" class="primary-btn google-custom-btn" style="width:100%;margin-top:4px" disabled>Create Order</button>
+      <div id="creditOrderStatus" aria-live="polite"></div>
     </section>`;
     document.body.appendChild(modal);
     modal.querySelector('#closeCreditShop').onclick = () => modal.remove();
-    modal.querySelectorAll('[data-pack]').forEach(btn => btn.addEventListener('click', async () => {
-      const name = modal.querySelector('#creditBuyerName').value.trim();
-      const phone = modal.querySelector('#creditBuyerPhone').value.trim();
-      const status = modal.querySelector('#creditOrderStatus');
-      if (!name || !phone) { status.textContent = 'Name နဲ့ ဖုန်းနံပါတ် ဖြည့်ပါ။'; return; }
+    let selectedPack = '';
+    const createBtn = modal.querySelector('#createCreditOrderBtn');
+    const status = modal.querySelector('#creditOrderStatus');
+    modal.querySelectorAll('[data-pack]').forEach(btn => btn.addEventListener('click', () => {
+      selectedPack = btn.dataset.pack;
+      modal.querySelectorAll('[data-pack]').forEach(b => {
+        const active = b === btn;
+        b.setAttribute('aria-pressed', String(active));
+        b.style.borderColor = active ? '#19c783' : '#484d66';
+        b.style.background = active ? '#12382d' : '#24283a';
+      });
+      createBtn.disabled = false;
+      status.innerHTML = '';
+    }));
+    createBtn.addEventListener('click', async () => {
+      if (!selectedPack) return;
       modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = true);
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
       status.textContent = 'Order ဖန်တီးနေပါတယ်…';
       try {
-        const r = await fetch(apiUrl('/api/credits/order'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({packId:btn.dataset.pack,name,phone})});
-        const d = await r.json();
+        const r = await fetch(apiUrl('/api/credits/order'), {
+          method:'POST', headers:authHeaders({'Content-Type':'application/json'}),
+          body:JSON.stringify({packId:selectedPack})
+        });
+        const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) throw new Error(d.error || 'Order ဖန်တီးမရပါ။');
-        const wave = d.wavePayPhone ? `<div style="background:#0d261f;border:1px solid #205943;border-radius:14px;padding:14px;margin:12px 0"><strong>WavePay</strong><div style="font-size:24px;font-weight:700;margin:5px 0">${escapeHtml(d.wavePayPhone)}</div>${d.wavePayName ? `<div>${escapeHtml(d.wavePayName)}</div>` : ""}<div style="margin-top:8px">ပေးရန် — <b>${Number(d.price).toLocaleString()} MMK</b></div></div>` : "";
-        status.innerHTML = `<div style="background:#0c0e14;border:1px solid #292d39;border-radius:14px;padding:14px;margin-top:12px"><p style="font-size:18px;font-weight:700;margin-top:0">Order ID</p><code style="display:block;overflow-wrap:anywhere;background:#07080c;padding:12px;border-radius:9px">${escapeHtml(d.orderId)}</code><p>Credit: ${Number(d.credits)} · Price: ${Number(d.price).toLocaleString()} MMK</p>${wave}<p>${escapeHtml(d.instructions || "WavePay ဖြင့်ငွေလွှဲပြီး Transaction ID နှင့် Screenshot တင်ပါ။")}</p><label style="display:block;margin:12px 0">Transaction ID<input id="creditPaymentTxId" class="payment-input" placeholder="ဥပမာ TX123456" style="display:block;width:100%;box-sizing:border-box;margin-top:6px"></label><label style="display:block;margin:12px 0">ငွေလွှဲ Screenshot<input id="creditPaymentShot" class="payment-input" type="file" accept="image/*" style="display:block;width:100%;box-sizing:border-box;margin-top:6px"></label><button id="creditSubmitPaymentBtn" type="button" class="primary-btn google-custom-btn" style="width:100%">Submit Payment</button><div id="creditPaymentStatus" aria-live="polite" style="margin-top:10px"></div></div>`;
+        const wave = d.wavePayPhone ? `<div style="background:#0d261f;border:1px solid #205943;border-radius:16px;padding:16px;margin:14px 0"><strong style="font-size:18px">WavePay</strong><div style="font-size:26px;font-weight:700;margin:7px 0">${escapeHtml(d.wavePayPhone)}</div>${d.wavePayName ? `<div style="font-size:18px">${escapeHtml(d.wavePayName)}</div>` : ''}<div style="font-size:18px;margin-top:10px">ပေးရန် — <b>${Number(d.price).toLocaleString()} MMK</b></div></div>` : `<p style="color:#ffb4b4">WavePay အချက်အလက် မသတ်မှတ်ရသေးပါ။ Admin ထံ ဆက်သွယ်ပါ။</p>`;
+        status.innerHTML = `<div style="background:#0c0e14;border:1px solid #292d39;border-radius:18px;padding:16px;margin-top:14px"><p style="font-size:20px;font-weight:700;margin:0 0 10px">Order ID</p><code style="display:block;overflow-wrap:anywhere;background:#07080c;padding:13px;border-radius:10px">${escapeHtml(d.orderId)}</code><p style="font-size:16px">Credit: ${Number(d.credits)} · Price: ${Number(d.price).toLocaleString()} MMK</p>${wave}<p style="color:#aeb4c2;line-height:1.7">${escapeHtml(d.instructions || 'WavePay ဖြင့် ငွေလွှဲပြီး Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။')}</p><label style="display:block;margin:14px 0">Transaction ID<input id="creditPaymentTxId" class="payment-input" placeholder="ဥပမာ TX123456" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:14px;border-radius:12px"></label><label style="display:block;margin:14px 0">ငွေလွှဲ Screenshot<input id="creditPaymentShot" class="payment-input" type="file" accept="image/*" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:12px;border-radius:12px"></label><button id="creditSubmitPaymentBtn" type="button" class="primary-btn google-custom-btn" style="width:100%">Submit Payment</button><div id="creditPaymentStatus" aria-live="polite" style="margin-top:10px"></div></div>`;
+        createBtn.style.display = 'none';
         const submitBtn = status.querySelector('#creditSubmitPaymentBtn');
         submitBtn.addEventListener('click', async () => {
           const tx = status.querySelector('#creditPaymentTxId').value.trim();
@@ -1060,8 +1077,8 @@ function setupRecapUI() {
           const reader = new FileReader();
           reader.onload = async () => {
             try {
-              const sr = await fetch(apiUrl('/api/credits/submit'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({transactionId:tx,screenshot:reader.result})});
-              const sd = await sr.json().catch(()=>({}));
+              const sr = await fetch(apiUrl('/api/credits/submit'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({transactionId:tx,screenshot:reader.result,orderId:d.orderId})});
+              const sd = await sr.json().catch(() => ({}));
               if (!sr.ok || !sd.ok) throw new Error(sd.error || 'Payment submit မအောင်မြင်ပါ။');
               paymentStatus.textContent = sd.message || 'Payment တင်ပြီးပါပြီ။ Admin စစ်ဆေးပြီးမှ Credit ရရှိပါမည်။';
               submitBtn.textContent = 'Payment Submitted';
@@ -1070,8 +1087,12 @@ function setupRecapUI() {
           reader.onerror = () => { paymentStatus.textContent = 'Screenshot ဖတ်မရပါ။ ပြန်ရွေးပါ။'; submitBtn.disabled = false; submitBtn.textContent = 'Submit Payment'; };
           reader.readAsDataURL(file);
         });
-      } catch(e) { status.textContent = e.message; modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = false); }
-    }));
+      } catch(e) {
+        status.textContent = e.message;
+        modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = false);
+        createBtn.disabled = false; createBtn.textContent = 'Create Order';
+      }
+    });
   });
   window.refreshRecapCreditBalance = refreshCreditBalance;
   refreshCreditBalance();
