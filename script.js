@@ -783,7 +783,7 @@ async function loadUsage() {
 function renderPlans(plans) {
   const grid = $("#plansGrid");
   if (!grid) return;
-  const planCards = plans.map(p => {
+  grid.innerHTML = plans.map(p => {
     const current = currentUsage?.id === p.id;
     const paid = p.id !== "free";
     return `<div class="plan-card ${current ? "current" : ""}">
@@ -794,49 +794,7 @@ function renderPlans(plans) {
       ${paid ? `<button class="primary-btn plan-buy-btn" data-plan="${p.id}" type="button">${p.paymentUrl ? "Buy / Pay" : "Setup Payment"}</button>` : `<button class="secondary-btn" type="button" disabled>Free Plan</button>`}
     </div>`;
   }).join("");
-  const creditPacks = [['credit30',30,5500],['credit50',50,15000],['credit100',100,25000],['credit300',300,35000],['credit500',500,55000],['credit1000',1000,150000]];
-  const creditCards = creditPacks.map(([id, credits, price]) => `<div class="plan-card credit-pack-card">
-    <div class="plan-badge">CREDIT PACK</div><h3>${credits} Credits</h3>
-    <div class="plan-price">${Number(price).toLocaleString()} MMK</div>
-    <ul><li>One-time purchase</li><li>James Recap tools</li><li>Admin approval required</li></ul>
-    <button class="primary-btn credit-pack-buy-btn" data-credit-pack="${id}" data-credits="${credits}" data-price="${price}" type="button">Setup Payment</button>
-  </div>`).join("");
-  grid.innerHTML = planCards + creditCards;
   grid.querySelectorAll(".plan-buy-btn").forEach(btn => btn.addEventListener("click", () => openPurchase(btn.dataset.plan, plans)));
-  grid.querySelectorAll(".credit-pack-buy-btn").forEach(btn => btn.addEventListener("click", () => openCreditPackPurchase(btn.dataset.creditPack, Number(btn.dataset.credits), Number(btn.dataset.price))));
-}
-function openCreditPackPurchase(packId, credits, price) {
-  const modal = $("#purchaseModal"), body = $("#purchaseBody"), title = $("#purchaseTitle");
-  if (!modal || !body || !title) return;
-  title.textContent = `${credits} Credits — Purchase`;
-  body.innerHTML = `<p><strong>Credit:</strong> ${credits}</p><p><strong>Price:</strong> ${price.toLocaleString()} MMK</p>
-    <p>Plan ဝယ်ယူတဲ့အခါ အသုံးပြုတဲ့ WavePay ဖုန်းနံပါတ်နဲ့ အမည်အတိုင်းပဲ ငွေပေးချေရပါမယ်။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။</p>
-    <button id="createCreditOrderBtn" class="primary-btn google-custom-btn" type="button">Create Order</button>
-    <div id="creditOrderStatus" class="payment-result" aria-live="polite"></div>`;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
-  $("#createCreditOrderBtn")?.addEventListener("click", async () => {
-    const status = $("#creditOrderStatus"), button = $("#createCreditOrderBtn");
-    button.disabled = true; button.textContent = "Creating..."; status.textContent = "Order ဖန်တီးနေပါတယ်…";
-    try {
-      const r = await fetch(apiUrl('/api/credits/order'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({packId})});
-      const d = await r.json();
-      if (!r.ok || !d.ok) throw new Error(d.error || 'Order ဖန်တီးမရပါ။');
-      const wave = d.wavePayPhone ? `<div class="wavepay-box"><strong>WavePay</strong><div class="wave-number">${escapeHtml(d.wavePayPhone)}</div>${d.wavePayName ? `<div>${escapeHtml(d.wavePayName)}</div>` : ""}<div>ပေးရန် — <strong>${Number(d.price || price).toLocaleString()} MMK</strong></div></div>` : `<p class="payment-warn">WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။</p>`;
-      status.innerHTML = `<div class="order-box"><p><strong>Order ID</strong></p><code>${escapeHtml(d.orderId)}</code>${wave}<p>${escapeHtml(d.instructions || 'Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။')}</p><label>Transaction ID<input id="creditPaymentTxId" class="payment-input" placeholder="ဥပမာ TX123456"></label><label>ငွေလွှဲ Screenshot<input id="creditPaymentShot" class="payment-input" type="file" accept="image/*"></label><button id="submitCreditPaymentBtn" class="primary-btn google-custom-btn" type="button">Submit Payment</button><div id="submitCreditPaymentStatus" class="small-note"></div></div>`;
-      $("#submitCreditPaymentBtn").addEventListener("click", async () => {
-        const tx = $("#creditPaymentTxId").value.trim(); const file = $("#creditPaymentShot").files[0];
-        const msg = $("#submitCreditPaymentStatus"), submitBtn = $("#submitCreditPaymentBtn");
-        if (!tx || !file) { msg.textContent = "Transaction ID နဲ့ Screenshot နှစ်ခုလုံးလိုပါတယ်။"; return; }
-        const reader = new FileReader(); submitBtn.disabled = true; msg.textContent = "Payment တင်နေပါတယ်…";
-        reader.onload = async () => {
-          try { const r2 = await fetch(apiUrl('/api/credits/submit'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({transactionId:tx,screenshot:reader.result})}); const d2 = await r2.json(); if(!r2.ok || !d2.ok) throw new Error(d2.error || 'Submit failed'); msg.textContent = d2.message || 'Payment တင်ပြီးပါပြီ။ Admin စစ်ပြီးမှ Credit ထည့်ပေးပါမယ်။'; }
-          catch(e) { msg.textContent = e.message; submitBtn.disabled = false; }
-        }; reader.readAsDataURL(file);
-      });
-    } catch (e) { status.textContent = e.message; }
-    finally { button.disabled = false; button.textContent = "Create Order"; }
-  });
 }
 async function openPurchase(planId, plans) {
   const plan = plans.find(x => x.id === planId);

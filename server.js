@@ -512,9 +512,37 @@ app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
   if (!customerName || !phone) return res.status(400).json({ok:false,error:"ဝယ်ယူရာတွင် အသုံးပြုမည့် Name နှင့် ဖုန်းနံပါတ် ထည့်ပါ။"});
   const user = req.appUser;
   const orderId = `CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
+  const creditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
+  // Keep every credit order so older orders remain manageable in Admin.
+  if (!Array.isArray(user.creditOrders)) user.creditOrders = user.pendingCreditOrder ? [user.pendingCreditOrder] : [];
+  user.creditOrders.push(creditOrder);
+  user.pendingCreditOrder = creditOrder;
   await saveUsers();
-  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, instructions:"ငွေပေးချေမှုအတွက် Admin ထံ ဆက်သွယ်ပါ။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။"});
+  res.json({
+    ok:true, orderId, credits:pack.credits, price:pack.price,
+    wavePayPhone: WAVE_PAY_PHONE, wavePayName: WAVE_PAY_NAME,
+    instructions: WAVE_PAY_PHONE
+      ? "အောက်ပါ WavePay နံပါတ်သို့ ငွေလွှဲပါ။ ပြီးရင် Transaction ID နဲ့ ငွေလွှဲ Screenshot ကို Submit Payment လုပ်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။"
+      : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ Admin ထံ ဆက်သွယ်ပါ။"
+  });
+});
+
+app.post("/api/credits/submit", requireGoogleLogin, async (req,res) => {
+  const user = req.appUser;
+  const order = user.pendingCreditOrder;
+  if (!order || !["pending", "payment_submitted"].includes(String(order.status || "pending"))) {
+    return res.status(400).json({ok:false,error:"Pending credit order မတွေ့ပါ။ Credit Order အသစ်တင်ရန် လိုအပ်နိုင်ပါတယ်။"});
+  }
+  const transactionId = String(req.body?.transactionId || "").trim().slice(0,160);
+  const screenshot = String(req.body?.screenshot || "").trim();
+  if (!transactionId) return res.status(400).json({ok:false,error:"Transaction ID ထည့်ပါ။"});
+  if (!screenshot.startsWith("data:image/")) return res.status(400).json({ok:false,error:"ငွေလွှဲ Screenshot တင်ပါ။"});
+  order.transactionId = transactionId;
+  order.screenshot = screenshot;
+  order.submittedAt = nowMs();
+  order.status = "payment_submitted";
+  await saveUsers();
+  res.json({ok:true,message:"Payment တင်ပြီးပါပြီ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမယ်။"});
 });
 
 app.get("/api/credits", requireGoogleLogin, async (req,res) => {
@@ -529,6 +557,18 @@ app.get("/api/credits", requireGoogleLogin, async (req,res) => {
 function isActionableOrder(order) {
   return !!order && ["pending", "payment_submitted"].includes(String(order.status || "pending"));
 }
+function allUserCreditOrders(user) {
+  const list = Array.isArray(user?.creditOrders) ? user.creditOrders : [];
+  const pending = user?.pendingCreditOrder;
+  if (pending && !list.some(o => o?.orderId && o.orderId === pending.orderId)) list.push(pending);
+  if (user && !Array.isArray(user.creditOrders)) user.creditOrders = list;
+  return list;
+}
+function findUserCreditOrder(user, orderId) {
+  const orders = allUserCreditOrders(user);
+  return orders.find(o => String(o?.orderId || "") === String(orderId || "")) ||
+    (!orderId ? user?.pendingCreditOrder : null);
+}
 
 app.post("/api/admin/credits/approve", async (req,res) => {
   const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
@@ -536,10 +576,14 @@ app.post("/api/admin/credits/approve", async (req,res) => {
   const sub = String(req.body?.sub || "").trim();
   const user = users[sub];
   const orderId = String(req.body?.orderId || "").trim();
-  const order = user?.pendingCreditOrder;
-  if (!order || !isActionableOrder(order) || (orderId && order.orderId !== orderId)) return res.status(404).json({ok:false,error:"Credit order not found or already processed. Reload orders and try again."});
-  user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits);
+  const order = findUserCreditOrder(user, orderId);
+  if (!order) return res.status(404).json({ok:false,error:"Credit order not found. Reload orders and try again."});
+  // An already-approved order must never credit the balance twice.
+  if (String(order.status) === "approved") return res.json({ok:true,alreadyApproved:true,credits:Number(user.creditBalance ?? 0)});
+  if (!isActionableOrder(order)) return res.status(409).json({ok:false,error:"This credit order has already been processed."});
+  user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits || 0);
   order.status = "approved"; order.approvedAt = nowMs();
+  if (user.pendingCreditOrder?.orderId === order.orderId) user.pendingCreditOrder = order;
   await saveUsers();
   res.json({ok:true, credits:user.creditBalance});
 });
@@ -549,8 +593,9 @@ app.post("/api/admin/credits/reject", async (req,res) => {
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const user = users[String(req.body?.sub || "").trim()];
   const orderId = String(req.body?.orderId || "").trim();
-  const order = user?.pendingCreditOrder;
-  if (!order || !isActionableOrder(order) || (orderId && order.orderId !== orderId)) return res.status(404).json({ok:false,error:"Credit order not found or already processed. Reload orders and try again."});
+  const order = findUserCreditOrder(user, orderId);
+  if (!order) return res.status(404).json({ok:false,error:"Credit order not found. Reload orders and try again."});
+  if (!isActionableOrder(order)) return res.status(409).json({ok:false,error:"This credit order has already been processed."});
   order.status = "rejected"; order.rejectedAt = nowMs();
   await saveUsers(); res.json({ok:true});
 });
@@ -561,7 +606,9 @@ app.get("/api/admin/orders", async (req, res) => {
   const orders = [];
   for (const u of Object.values(users)) {
     if (isActionableOrder(u.pendingPurchase)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"plan",...u.pendingPurchase});
-    if (isActionableOrder(u.pendingCreditOrder)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"credit",planId:`Credit ${u.pendingCreditOrder.credits}`,...u.pendingCreditOrder});
+    for (const creditOrder of allUserCreditOrders(u)) {
+      if (isActionableOrder(creditOrder)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"credit",planId:`Credit ${creditOrder.credits}`,...creditOrder});
+    }
   }
   res.json({ok:true,orders});
 });
