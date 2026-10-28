@@ -506,15 +506,29 @@ const CREDIT_PACKS = {
 app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
   const packId = String(req.body?.packId || "");
   const pack = CREDIT_PACKS[packId];
-  const customerName = String(req.body?.name || "").trim().slice(0,100);
-  const phone = String(req.body?.phone || "").trim().slice(0,40);
   if (!pack) return res.status(400).json({ok:false,error:"Credit pack မမှန်ပါ။"});
-  if (!customerName || !phone) return res.status(400).json({ok:false,error:"ဝယ်ယူရာတွင် အသုံးပြုမည့် Name နှင့် ဖုန်းနံပါတ် ထည့်ပါ။"});
   const user = req.appUser;
   const orderId = `CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
+  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName:String(user.name || user.email || "").slice(0,100), phone:String(user.phone || "").slice(0,40), status:"pending", createdAt:nowMs() };
   await saveUsers();
-  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, instructions:"ငွေပေးချေမှုအတွက် Admin ထံ ဆက်သွယ်ပါ။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။"});
+  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, wavePayPhone:WAVE_PAY_PHONE, wavePayName:WAVE_PAY_NAME,
+    instructions:WAVE_PAY_PHONE ? "Plan ဝယ်ယူမှုအတွက် အသုံးပြုတဲ့ WavePay နံပါတ်အတိုင်း ငွေလွှဲပြီး Transaction ID နဲ့ Screenshot ကို Submit Payment လုပ်ပါ။ Admin စစ်ပြီးမှ Credit ထည့်ပေးပါမည်။" : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ Render Environment Variables ထဲမှာ WAVE_PAY_PHONE နဲ့ WAVE_PAY_NAME ကို Plan payment အတိုင်း သတ်မှတ်ပါ။"});
+});
+
+app.post("/api/credits/submit", requireGoogleLogin, async (req, res) => {
+  const user = req.appUser;
+  const order = user.pendingCreditOrder;
+  if (!order || order.status !== "pending") return res.status(400).json({ok:false,error:"Pending credit order မတွေ့ပါ။"});
+  const transactionId = String(req.body?.transactionId || "").trim();
+  const screenshot = String(req.body?.screenshot || "").trim();
+  if (!transactionId) return res.status(400).json({ok:false,error:"Transaction ID ထည့်ပါ။"});
+  if (!screenshot || !screenshot.startsWith("data:image/")) return res.status(400).json({ok:false,error:"ငွေလွှဲ Screenshot တင်ပါ။"});
+  order.transactionId = transactionId;
+  order.screenshot = screenshot;
+  order.submittedAt = nowMs();
+  order.status = "payment_submitted";
+  await saveUsers();
+  res.json({ok:true,message:"Payment တင်ပြီးပါပြီ။ Admin စစ်ပြီးမှ Credit ထည့်ပေးပါမည်။"});
 });
 
 app.get("/api/credits", requireGoogleLogin, async (req,res) => {
