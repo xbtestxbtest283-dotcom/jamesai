@@ -171,9 +171,15 @@ function makeUser(user) {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
     plan: "free", planStartedAt: null, planExpiresAt: null,
     messageCount: 0, imageCount: 0, windowStartedAt: null, freeResetAt: null,
-    pendingPurchase: null
+    pendingPurchase: null, creditBalance: 3, creditResetAt: nowMs(), pendingCreditOrder: null
   };
   existing.email = user.email; existing.name = user.name; existing.picture = user.picture;
+  if (!Number.isFinite(Number(existing.creditBalance))) existing.creditBalance = 3;
+  if (!existing.creditResetAt) existing.creditResetAt = nowMs();
+  if (nowMs() >= Number(existing.creditResetAt) + QUOTA_WINDOW_MS) {
+    existing.creditBalance = 3;
+    existing.creditResetAt = nowMs();
+  }
   const now = nowMs();
   if (existing.plan !== "free" && existing.planExpiresAt && now >= existing.planExpiresAt) {
     // Paid plan has ended: return to Free and reset all paid-plan counters.
@@ -454,7 +460,7 @@ app.get("/api/plans", (_req, res) => {
 app.get("/api/usage", requireGoogleLogin, async (req, res) => {
   const user = req.appUser;
   await saveUsers();
-  res.json({ ok:true, plan:publicPlan(user), plans:planList(), pendingPurchase:user.pendingPurchase || null });
+  res.json({ ok:true, plan:publicPlan(user), plans:planList(), pendingPurchase:user.pendingPurchase || null, credits: Number(user.creditBalance ?? 3), creditResetAt: user.creditResetAt });
 });
 
 app.post("/api/purchase", requireGoogleLogin, async (req, res) => {
@@ -486,6 +492,60 @@ app.post("/api/purchase/submit", requireGoogleLogin, async (req, res) => {
   order.status = "payment_submitted";
   await saveUsers();
   res.json({ok:true, message:"Payment တင်ပြီးပါပြီ။ Admin စစ်ပြီးမှ plan activate လုပ်ပါမယ်။"});
+});
+
+const CREDIT_PACKS = {
+  credit30: { credits: 30, price: 5500 },
+  credit50: { credits: 50, price: 15000 },
+  credit100: { credits: 100, price: 25000 },
+  credit300: { credits: 300, price: 35000 },
+  credit500: { credits: 500, price: 55000 },
+  credit1000: { credits: 1000, price: 150000 }
+};
+
+app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
+  const packId = String(req.body?.packId || "");
+  const pack = CREDIT_PACKS[packId];
+  const customerName = String(req.body?.name || "").trim().slice(0,100);
+  const phone = String(req.body?.phone || "").trim().slice(0,40);
+  if (!pack) return res.status(400).json({ok:false,error:"Credit pack မမှန်ပါ။"});
+  if (!customerName || !phone) return res.status(400).json({ok:false,error:"ဝယ်ယူရာတွင် အသုံးပြုမည့် Name နှင့် ဖုန်းနံပါတ် ထည့်ပါ။"});
+  const user = req.appUser;
+  const orderId = `CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
+  await saveUsers();
+  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, instructions:"ငွေပေးချေမှုအတွက် Admin ထံ ဆက်သွယ်ပါ။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။"});
+});
+
+app.get("/api/credits", requireGoogleLogin, async (req,res) => {
+  const user = req.appUser;
+  if (!Number.isFinite(Number(user.creditBalance))) user.creditBalance = 3;
+  if (!user.creditResetAt || nowMs() >= Number(user.creditResetAt) + QUOTA_WINDOW_MS) {
+    user.creditBalance = 3; user.creditResetAt = nowMs(); await saveUsers();
+  }
+  res.json({ok:true, credits:Number(user.creditBalance), resetAt:user.creditResetAt});
+});
+
+app.post("/api/admin/credits/approve", async (req,res) => {
+  const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
+  if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
+  const sub = String(req.body?.sub || "").trim();
+  const user = users[sub];
+  const order = user?.pendingCreditOrder;
+  if (!order || order.status !== "pending") return res.status(404).json({ok:false,error:"Pending credit order not found."});
+  user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits);
+  order.status = "approved"; order.approvedAt = nowMs();
+  await saveUsers();
+  res.json({ok:true, credits:user.creditBalance});
+});
+
+app.post("/api/admin/credits/reject", async (req,res) => {
+  const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
+  if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
+  const user = users[String(req.body?.sub || "").trim()];
+  if (!user?.pendingCreditOrder || user.pendingCreditOrder.status !== "pending") return res.status(404).json({ok:false,error:"Pending credit order not found."});
+  user.pendingCreditOrder.status = "rejected"; user.pendingCreditOrder.rejectedAt = nowMs();
+  await saveUsers(); res.json({ok:true});
 });
 
 app.get("/api/admin/orders", async (req, res) => {
@@ -603,6 +663,16 @@ Help with general questions, programming, study, translation, writing, math, exp
 });
 
 
+function spendRecapCredit(user) {
+  if (!Number.isFinite(Number(user.creditBalance))) user.creditBalance = 3;
+  if (!user.creditResetAt || nowMs() >= Number(user.creditResetAt) + QUOTA_WINDOW_MS) {
+    user.creditBalance = 3; user.creditResetAt = nowMs();
+  }
+  if (Number(user.creditBalance) <= 0) return false;
+  user.creditBalance = Number(user.creditBalance) - 1;
+  return true;
+}
+
 // AI recap preparation: summarizes supplied transcript/script using OpenAI.
 // Video files themselves are not directly decoded here; provide transcript/subtitle text.
 app.post("/api/recap", requireGoogleLogin, async (req, res) => {
@@ -613,7 +683,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
     if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
     const user = makeUser(req.googleUser);
-    if (!checkQuota(user, "message")) return res.status(429).json(quotaError(user, "message"));
+    if (!spendRecapCredit(user)) return res.status(429).json({ok:false,error:"James Recap Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။"});
     const response = await client.responses.create({
       model,
       instructions: language === "en"
@@ -623,7 +693,7 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     });
     const recap = String(response.output_text || "").trim();
     if (!recap) return res.status(502).json({ok:false,error:"OpenAI က recap မပြန်လာပါ။"});
-    incrementUsage(user, "message"); await saveUsers();
+    await saveUsers();
     res.json({ok:true, recap, usage:publicPlan(user)});
   } catch (error) {
     console.error("RECAP ERROR:", error);
@@ -643,6 +713,9 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
     const rate = ["-5%", "+0%", "+5%"].includes(requestedRate) ? requestedRate : "-5%";
 
     if (!text) return res.status(400).json({ ok: false, error: "ဖတ်စေလိုသော စာသား ထည့်ပေးပါ။" });
+    const recapUser = makeUser(req.googleUser);
+    if (!spendRecapCredit(recapUser)) return res.status(429).json({ok:false,error:"James Recap Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။"});
+    await saveUsers();
     if (text.length > 5000) return res.status(413).json({ ok: false, error: "စာသားသည် 5,000 characters ထက် မကျော်ရပါ။" });
 
     const voice = language === "my"
