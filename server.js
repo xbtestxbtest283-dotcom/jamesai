@@ -506,11 +506,12 @@ const CREDIT_PACKS = {
 app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
   const packId = String(req.body?.packId || "");
   const pack = CREDIT_PACKS[packId];
-  const customerName = String(req.body?.name || "").trim().slice(0,100);
-  const phone = String(req.body?.phone || "").trim().slice(0,40);
   if (!pack) return res.status(400).json({ok:false,error:"Credit pack မမှန်ပါ။"});
-  if (!customerName || !phone) return res.status(400).json({ok:false,error:"ဝယ်ယူရာတွင် အသုံးပြုမည့် Name နှင့် ဖုန်းနံပါတ် ထည့်ပါ။"});
   const user = req.appUser;
+  // Buyer identity comes from the signed-in account. WavePay recipient details
+  // match the Plus/Pro purchase flow through WAVE_PAY_PHONE and WAVE_PAY_NAME.
+  const customerName = String(user.name || user.email || "James AI user").trim().slice(0,100);
+  const phone = String(user.phone || "").trim().slice(0,40);
   const orderId = `CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
   const creditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
   // Keep every credit order so older orders remain manageable in Admin.
@@ -529,7 +530,11 @@ app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
 
 app.post("/api/credits/submit", requireGoogleLogin, async (req,res) => {
   const user = req.appUser;
-  const order = user.pendingCreditOrder;
+  const requestedOrderId = String(req.body?.orderId || "").trim();
+  const orderList = Array.isArray(user.creditOrders) ? user.creditOrders : [];
+  const order = requestedOrderId
+    ? orderList.find(item => item?.orderId === requestedOrderId) || (user.pendingCreditOrder?.orderId === requestedOrderId ? user.pendingCreditOrder : null)
+    : user.pendingCreditOrder;
   if (!order || !["pending", "payment_submitted"].includes(String(order.status || "pending"))) {
     return res.status(400).json({ok:false,error:"Pending credit order မတွေ့ပါ။ Credit Order အသစ်တင်ရန် လိုအပ်နိုင်ပါတယ်။"});
   }
