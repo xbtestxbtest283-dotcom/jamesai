@@ -68,12 +68,13 @@ async function load() {
       card.className = 'order';
 
       const title = document.createElement('b');
-      title.textContent = `${o.planId || 'Unknown plan'} — ${o.price || ''}`;
+      title.textContent = `${o.type === 'credit' ? 'CREDIT ORDER' : 'PLAN ORDER'}: ${o.planId || 'Unknown plan'} — ${o.price || ''} MMK`;
       card.appendChild(title);
 
       const user = document.createElement('p');
       user.textContent = `User: ${o.name || ''} ${o.email || ''}`;
       card.appendChild(user);
+      if (o.type === 'credit') { const details = document.createElement('p'); details.textContent = `Buyer: ${o.customerName || ''} · Phone: ${o.phone || ''} · Credits: ${o.credits || 0}`; card.appendChild(details); }
 
       const order = document.createElement('p');
       order.textContent = `Order: ${o.orderId || ''}`;
@@ -97,13 +98,13 @@ async function load() {
       const approve = document.createElement('button');
       approve.className = 'ok';
       approve.textContent = 'Approve / Activate';
-      approve.addEventListener('click', () => activate(o.sub, o.planId));
+      approve.addEventListener('click', () => o.type === 'credit' ? approveCredit(o.sub) : activate(o.sub, o.planId));
       card.appendChild(approve);
 
       const rejectBtn = document.createElement('button');
       rejectBtn.className = 'bad';
       rejectBtn.textContent = 'Reject';
-      rejectBtn.addEventListener('click', () => reject(o.sub));
+      rejectBtn.addEventListener('click', () => o.type === 'credit' ? rejectCredit(o.sub) : reject(o.sub));
       card.appendChild(rejectBtn);
 
       $('orders').appendChild(card);
@@ -112,6 +113,23 @@ async function load() {
   } catch (err) {
     $('status').textContent = 'Connection error: ' + err.message;
   }
+}
+
+async function approveCredit(sub) {
+  try {
+    const r = await fetch('/api/admin/credits/approve', {method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':$('secret').value.trim()},body:JSON.stringify({sub})});
+    const d = await r.json();
+    alert(r.ok && d.ok ? `Credit approved. Balance: ${d.credits}` : (d.error || 'Approval failed'));
+    if (r.ok && d.ok) load();
+  } catch(err) { alert('Connection error: ' + err.message); }
+}
+async function rejectCredit(sub) {
+  try {
+    const r = await fetch('/api/admin/credits/reject', {method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':$('secret').value.trim()},body:JSON.stringify({sub})});
+    const d = await r.json();
+    alert(r.ok && d.ok ? 'Credit order rejected' : (d.error || 'Rejection failed'));
+    if (r.ok && d.ok) load();
+  } catch(err) { alert('Connection error: ' + err.message); }
 }
 
 async function activate(sub, planId) {
