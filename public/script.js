@@ -1141,11 +1141,20 @@ function setupRecapUI() {
       if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
       let player = document.querySelector('#jamesVoiceAudio');
       if(!player) { player = document.createElement('audio'); player.id='jamesVoiceAudio'; player.controls=true; player.style.display='block'; player.style.width='100%'; btn.insertAdjacentElement('afterend',player); }
-      player.src = d.audio;
-      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။'; window.refreshRecapCreditBalance?.();
+      // Android download managers may fail to save a data: URL directly.
+      // Convert the generated MP3 data URL into a Blob URL for playback and download.
+      const audioResponse = await fetch(d.audio);
+      if (!audioResponse.ok) throw new Error('ဖန်တီးထားသော အသံဖိုင်ကို ဖတ်မရပါ။ ထပ်မံ Prepare လုပ်ကြည့်ပါ။');
+      const audioBlob = await audioResponse.blob();
+      if (!audioBlob.size) throw new Error('အသံဖိုင် အလွတ်ဖြစ်နေပါသည်။ ထပ်မံ Prepare လုပ်ကြည့်ပါ။');
+      if (window.__jamesVoiceObjectUrl) URL.revokeObjectURL(window.__jamesVoiceObjectUrl);
+      const audioUrl = URL.createObjectURL(audioBlob);
+      window.__jamesVoiceObjectUrl = audioUrl;
+      player.src = audioUrl;
+      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး Download voiceover (MP3) ကိုနှိပ်၍ သိမ်းနိုင်ပါတယ်။'; window.refreshRecapCreditBalance?.();
       let link = document.querySelector('#jamesVoiceDownload');
       if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
-      link.href=d.audio; link.download='james-voiceover.mp3';
+      link.href=audioUrl; link.download='james-voiceover.mp3'; link.setAttribute('type','audio/mpeg');
     } catch(e) {
       // Free fallback: browser/OS voices. This previews speech only; it cannot create an MP3.
       if ('speechSynthesis' in window && window.SpeechSynthesisUtterance) {
