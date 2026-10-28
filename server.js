@@ -506,29 +506,15 @@ const CREDIT_PACKS = {
 app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
   const packId = String(req.body?.packId || "");
   const pack = CREDIT_PACKS[packId];
+  const customerName = String(req.body?.name || "").trim().slice(0,100);
+  const phone = String(req.body?.phone || "").trim().slice(0,40);
   if (!pack) return res.status(400).json({ok:false,error:"Credit pack မမှန်ပါ။"});
+  if (!customerName || !phone) return res.status(400).json({ok:false,error:"ဝယ်ယူရာတွင် အသုံးပြုမည့် Name နှင့် ဖုန်းနံပါတ် ထည့်ပါ။"});
   const user = req.appUser;
   const orderId = `CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName:String(user.name || user.email || "").slice(0,100), phone:String(user.phone || "").slice(0,40), status:"pending", createdAt:nowMs() };
+  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
   await saveUsers();
-  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, wavePayPhone:WAVE_PAY_PHONE, wavePayName:WAVE_PAY_NAME,
-    instructions:WAVE_PAY_PHONE ? "Plan ဝယ်ယူမှုအတွက် အသုံးပြုတဲ့ WavePay နံပါတ်အတိုင်း ငွေလွှဲပြီး Transaction ID နဲ့ Screenshot ကို Submit Payment လုပ်ပါ။ Admin စစ်ပြီးမှ Credit ထည့်ပေးပါမည်။" : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ Render Environment Variables ထဲမှာ WAVE_PAY_PHONE နဲ့ WAVE_PAY_NAME ကို Plan payment အတိုင်း သတ်မှတ်ပါ။"});
-});
-
-app.post("/api/credits/submit", requireGoogleLogin, async (req, res) => {
-  const user = req.appUser;
-  const order = user.pendingCreditOrder;
-  if (!order || order.status !== "pending") return res.status(400).json({ok:false,error:"Pending credit order မတွေ့ပါ။"});
-  const transactionId = String(req.body?.transactionId || "").trim();
-  const screenshot = String(req.body?.screenshot || "").trim();
-  if (!transactionId) return res.status(400).json({ok:false,error:"Transaction ID ထည့်ပါ။"});
-  if (!screenshot || !screenshot.startsWith("data:image/")) return res.status(400).json({ok:false,error:"ငွေလွှဲ Screenshot တင်ပါ။"});
-  order.transactionId = transactionId;
-  order.screenshot = screenshot;
-  order.submittedAt = nowMs();
-  order.status = "payment_submitted";
-  await saveUsers();
-  res.json({ok:true,message:"Payment တင်ပြီးပါပြီ။ Admin စစ်ပြီးမှ Credit ထည့်ပေးပါမည်။"});
+  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, instructions:"ငွေပေးချေမှုအတွက် Admin ထံ ဆက်သွယ်ပါ။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။"});
 });
 
 app.get("/api/credits", requireGoogleLogin, async (req,res) => {
@@ -540,13 +526,18 @@ app.get("/api/credits", requireGoogleLogin, async (req,res) => {
   res.json({ok:true, credits:Number(user.creditBalance), resetAt:user.creditResetAt});
 });
 
+function isActionableOrder(order) {
+  return !!order && ["pending", "payment_submitted"].includes(String(order.status || "pending"));
+}
+
 app.post("/api/admin/credits/approve", async (req,res) => {
   const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const sub = String(req.body?.sub || "").trim();
   const user = users[sub];
+  const orderId = String(req.body?.orderId || "").trim();
   const order = user?.pendingCreditOrder;
-  if (!order || !["pending", "payment_submitted"].includes(order.status)) return res.status(404).json({ok:false,error:"Pending credit order not found."});
+  if (!order || !isActionableOrder(order) || (orderId && order.orderId !== orderId)) return res.status(404).json({ok:false,error:"Credit order not found or already processed. Reload orders and try again."});
   user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits);
   order.status = "approved"; order.approvedAt = nowMs();
   await saveUsers();
@@ -557,23 +548,21 @@ app.post("/api/admin/credits/reject", async (req,res) => {
   const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const user = users[String(req.body?.sub || "").trim()];
-  if (!user?.pendingCreditOrder || !["pending", "payment_submitted"].includes(user.pendingCreditOrder.status)) return res.status(404).json({ok:false,error:"Pending credit order not found."});
-  user.pendingCreditOrder.status = "rejected"; user.pendingCreditOrder.rejectedAt = nowMs();
+  const orderId = String(req.body?.orderId || "").trim();
+  const order = user?.pendingCreditOrder;
+  if (!order || !isActionableOrder(order) || (orderId && order.orderId !== orderId)) return res.status(404).json({ok:false,error:"Credit order not found or already processed. Reload orders and try again."});
+  order.status = "rejected"; order.rejectedAt = nowMs();
   await saveUsers(); res.json({ok:true});
 });
 
 app.get("/api/admin/orders", async (req, res) => {
   const secret = String(req.headers["x-admin-secret"] || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
-  const planOrders = Object.values(users).filter(u => u.pendingPurchase).map(u => ({
-    type:"plan", sub:u.sub,email:u.email,name:u.name, ...u.pendingPurchase
-  }));
-  const creditOrders = Object.values(users).filter(u => u.pendingCreditOrder).map(u => ({
-    type:"credit", sub:u.sub,email:u.email,name:u.name,
-    planId:`${Number(u.pendingCreditOrder.credits || 0)} Credits`,
-    ...u.pendingCreditOrder
-  }));
-  const orders = [...planOrders, ...creditOrders].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+  const orders = [];
+  for (const u of Object.values(users)) {
+    if (isActionableOrder(u.pendingPurchase)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"plan",...u.pendingPurchase});
+    if (isActionableOrder(u.pendingCreditOrder)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"credit",planId:`Credit ${u.pendingCreditOrder.credits}`,...u.pendingCreditOrder});
+  }
   res.json({ok:true,orders});
 });
 
@@ -582,7 +571,8 @@ app.post("/api/admin/reject", async (req, res) => {
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const sub = String(req.body?.sub || "").trim();
   const user = users[sub];
-  if (!user?.pendingPurchase) return res.status(404).json({ok:false,error:"Order not found."});
+  const orderId = String(req.body?.orderId || "").trim();
+  if (!user?.pendingPurchase || !isActionableOrder(user.pendingPurchase) || (orderId && user.pendingPurchase.orderId !== orderId)) return res.status(404).json({ok:false,error:"Plan order not found or already processed. Reload orders and try again."});
   user.pendingPurchase.status = "rejected";
   user.pendingPurchase.rejectedAt = nowMs();
   await saveUsers();
@@ -600,6 +590,8 @@ app.post("/api/admin/activate", async (req, res) => {
   if ((!sub && !email) || !PLANS[planId] || planId === "free") return res.status(400).json({ok:false,error:"Invalid user or plan."});
   const user = sub ? users[sub] : Object.values(users).find(x => String(x.email || "").toLowerCase() === email);
   if (!user) return res.status(404).json({ok:false,error:"User not found."});
+  const orderId = String(req.body?.orderId || "").trim();
+  if (orderId && (!user.pendingPurchase || user.pendingPurchase.orderId !== orderId || !isActionableOrder(user.pendingPurchase))) return res.status(404).json({ok:false,error:"Plan order not found or already processed. Reload orders and try again."});
   const start = nowMs();
   user.plan = planId;
   user.planStartedAt = start;
@@ -713,6 +705,8 @@ app.post("/api/recap", requireGoogleLogin, async (req, res) => {
     });
     const recap = String(response.output_text || "").trim();
     if (!recap) return res.status(502).json({ok:false,error:"OpenAI က recap မပြန်လာပါ။"});
+    // Mark this movie-recap workflow as charged so its subsequent export does not double-charge.
+    user.lastMovieRecapCreditAt = nowMs();
     await saveUsers();
     res.json({ok:true, recap, usage:publicPlan(user)});
   } catch (error) {
@@ -777,6 +771,8 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     const rate = ["-5%", "+0%", "+5%"].includes(rateValue) ? rateValue : "-5%";
     if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။" });
     if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
+    const recapUser = makeUser(req.googleUser);
+    if (Number(recapUser.creditBalance ?? 3) <= 0) return res.status(429).json({ ok:false, error:"James Movie Recap အတွက် Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။" });
     const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
     tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-export-"));
     const inputPath = path.join(tempDir, "source-video");
@@ -790,6 +786,13 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
     const stat = await fs.promises.stat(outputPath);
     if (!stat.size) throw new Error("FFmpeg returned an empty video.");
+    // Charge export only when the recap-generation step has not already charged for this workflow.
+    const alreadyChargedForWorkflow = Number(recapUser.lastMovieRecapCreditAt || 0) > nowMs() - 30 * 60 * 1000;
+    if (!alreadyChargedForWorkflow) {
+      if (!spendRecapCredit(recapUser)) return res.status(429).json({ ok:false, error:"James Movie Recap အတွက် Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။" });
+    }
+    recapUser.lastMovieRecapCreditAt = null;
+    await saveUsers();
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", 'attachment; filename="james-ai-myanmar-recap.mp4"');
     res.setHeader("Content-Length", String(stat.size));
