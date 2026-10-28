@@ -546,7 +546,7 @@ app.post("/api/admin/credits/approve", async (req,res) => {
   const sub = String(req.body?.sub || "").trim();
   const user = users[sub];
   const order = user?.pendingCreditOrder;
-  if (!order || order.status !== "pending") return res.status(404).json({ok:false,error:"Pending credit order not found."});
+  if (!order || !["pending", "payment_submitted"].includes(order.status)) return res.status(404).json({ok:false,error:"Pending credit order not found."});
   user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits);
   order.status = "approved"; order.approvedAt = nowMs();
   await saveUsers();
@@ -557,7 +557,7 @@ app.post("/api/admin/credits/reject", async (req,res) => {
   const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const user = users[String(req.body?.sub || "").trim()];
-  if (!user?.pendingCreditOrder || user.pendingCreditOrder.status !== "pending") return res.status(404).json({ok:false,error:"Pending credit order not found."});
+  if (!user?.pendingCreditOrder || !["pending", "payment_submitted"].includes(user.pendingCreditOrder.status)) return res.status(404).json({ok:false,error:"Pending credit order not found."});
   user.pendingCreditOrder.status = "rejected"; user.pendingCreditOrder.rejectedAt = nowMs();
   await saveUsers(); res.json({ok:true});
 });
@@ -565,9 +565,15 @@ app.post("/api/admin/credits/reject", async (req,res) => {
 app.get("/api/admin/orders", async (req, res) => {
   const secret = String(req.headers["x-admin-secret"] || "").trim();
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
-  const orders = Object.values(users).filter(u => u.pendingPurchase).map(u => ({
-    sub:u.sub,email:u.email,name:u.name, ...u.pendingPurchase
+  const planOrders = Object.values(users).filter(u => u.pendingPurchase).map(u => ({
+    type:"plan", sub:u.sub,email:u.email,name:u.name, ...u.pendingPurchase
   }));
+  const creditOrders = Object.values(users).filter(u => u.pendingCreditOrder).map(u => ({
+    type:"credit", sub:u.sub,email:u.email,name:u.name,
+    planId:`${Number(u.pendingCreditOrder.credits || 0)} Credits`,
+    ...u.pendingCreditOrder
+  }));
+  const orders = [...planOrders, ...creditOrders].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
   res.json({ok:true,orders});
 });
 
