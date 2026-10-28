@@ -1,4 +1,4 @@
-const CACHE = 'jamesai-shell-v2';
+const CACHE = 'jamesai-shell-v3-voice-download';
 const ASSETS = ['/', '/index.html', '/style.css', '/script.js', '/jamesai-logo.jpg', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', event => {
