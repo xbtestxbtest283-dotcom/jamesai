@@ -1025,74 +1025,31 @@ function setupRecapUI() {
     const modal = document.createElement('div');
     modal.id = 'creditShopModal';
     modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000b;display:grid;place-items:center;padding:16px;overflow:auto';
-    modal.innerHTML = `<section style="background:#111522;color:#fff;border:1px solid #393d50;border-radius:24px;padding:22px;width:min(100%,460px);max-height:92vh;overflow:auto;box-sizing:border-box">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 style="margin:0">James Recap Credit</h2><button type="button" id="closeCreditShop" aria-label="Close" style="padding:8px 12px">✕</button></div>
-      <p style="color:#c3c6d1;line-height:1.7">Credit ကိုရွေးပြီး Create Order နှိပ်ပါ။ Plus Pro ဝယ်ယူရာတွင် သတ်မှတ်ထားသော WavePay အမည်နှင့် ဖုန်းနံပါတ်အတိုင်း ငွေလွှဲနိုင်ပါသည်။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။</p>
+    modal.innerHTML = `<section style="background:#111522;color:#fff;border:1px solid #393d50;border-radius:18px;padding:20px;width:min(100%,460px);max-height:92vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 style="margin:0">James Recap Credit</h2><button type="button" id="closeCreditShop" style="padding:8px 12px">✕</button></div>
+      <p>နေ့စဉ် Credit 3 ခု အခမဲ့ရရှိမည်။ Credit သည် James Recap Tools နှစ်ခုအတွက်သာ ဖြစ်ပြီး Chat နှင့် AI Image Generator ကို မသက်ရောက်ပါ။</p>
+      <label style="display:block;margin:10px 0">Name (ဝယ်ယူစဉ် အသုံးပြုသောအမည်)<input id="creditBuyerName" autocomplete="name" style="display:block;width:100%;padding:12px;margin-top:5px;border-radius:8px"></label>
+      <label style="display:block;margin:10px 0">ဖုန်းနံပါတ် (ဝယ်ယူစဉ် အသုံးပြုသောနံပါတ်)<input id="creditBuyerPhone" type="tel" autocomplete="tel" style="display:block;width:100%;padding:12px;margin-top:5px;border-radius:8px"></label>
       <div id="creditPackList" style="display:grid;gap:8px;margin:14px 0">
-      ${[['credit30',30,5500],['credit50',50,15000],['credit100',100,25000],['credit300',300,35000],['credit500',500,55000],['credit1000',1000,150000]].map(([id,c,p])=>`<button type="button" data-pack="${id}" aria-pressed="false" style="padding:15px;border-radius:14px;background:#24283a;color:#fff;border:1px solid #484d66;text-align:left;font-size:16px">Credit ${c} — ${Number(p).toLocaleString()} MMK</button>`).join('')}
-      </div>
-      <button type="button" id="createCreditOrderBtn" class="primary-btn google-custom-btn" style="width:100%;margin-top:4px" disabled>Create Order</button>
-      <div id="creditOrderStatus" aria-live="polite"></div>
+      ${[['credit30',30,5500],['credit50',50,15000],['credit100',100,25000],['credit300',300,35000],['credit500',500,55000],['credit1000',1000,150000]].map(([id,c,p])=>`<button type="button" data-pack="${id}" style="padding:13px;border-radius:10px;background:#24283a;color:#fff;border:1px solid #484d66;text-align:left">Credit ${c} — ${Number(p).toLocaleString()} MMK</button>`).join('')}
+      </div><div id="creditOrderStatus" aria-live="polite"></div>
     </section>`;
     document.body.appendChild(modal);
     modal.querySelector('#closeCreditShop').onclick = () => modal.remove();
-    let selectedPack = '';
-    const createBtn = modal.querySelector('#createCreditOrderBtn');
-    const status = modal.querySelector('#creditOrderStatus');
-    modal.querySelectorAll('[data-pack]').forEach(btn => btn.addEventListener('click', () => {
-      selectedPack = btn.dataset.pack;
-      modal.querySelectorAll('[data-pack]').forEach(b => {
-        const active = b === btn;
-        b.setAttribute('aria-pressed', String(active));
-        b.style.borderColor = active ? '#19c783' : '#484d66';
-        b.style.background = active ? '#12382d' : '#24283a';
-      });
-      createBtn.disabled = false;
-      status.innerHTML = '';
-    }));
-    createBtn.addEventListener('click', async () => {
-      if (!selectedPack) return;
+    modal.querySelectorAll('[data-pack]').forEach(btn => btn.addEventListener('click', async () => {
+      const name = modal.querySelector('#creditBuyerName').value.trim();
+      const phone = modal.querySelector('#creditBuyerPhone').value.trim();
+      const status = modal.querySelector('#creditOrderStatus');
+      if (!name || !phone) { status.textContent = 'Name နဲ့ ဖုန်းနံပါတ် ဖြည့်ပါ။'; return; }
       modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = true);
-      createBtn.disabled = true;
-      createBtn.textContent = 'Creating...';
       status.textContent = 'Order ဖန်တီးနေပါတယ်…';
       try {
-        const r = await fetch(apiUrl('/api/credits/order'), {
-          method:'POST', headers:authHeaders({'Content-Type':'application/json'}),
-          body:JSON.stringify({packId:selectedPack})
-        });
-        const d = await r.json().catch(() => ({}));
+        const r = await fetch(apiUrl('/api/credits/order'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({packId:btn.dataset.pack,name,phone})});
+        const d = await r.json();
         if (!r.ok || !d.ok) throw new Error(d.error || 'Order ဖန်တီးမရပါ။');
-        const wave = d.wavePayPhone ? `<div style="background:#0d261f;border:1px solid #205943;border-radius:16px;padding:16px;margin:14px 0"><strong style="font-size:18px">WavePay</strong><div style="font-size:26px;font-weight:700;margin:7px 0">${escapeHtml(d.wavePayPhone)}</div>${d.wavePayName ? `<div style="font-size:18px">${escapeHtml(d.wavePayName)}</div>` : ''}<div style="font-size:18px;margin-top:10px">ပေးရန် — <b>${Number(d.price).toLocaleString()} MMK</b></div></div>` : `<p style="color:#ffb4b4">WavePay အချက်အလက် မသတ်မှတ်ရသေးပါ။ Admin ထံ ဆက်သွယ်ပါ။</p>`;
-        status.innerHTML = `<div style="background:#0c0e14;border:1px solid #292d39;border-radius:18px;padding:16px;margin-top:14px"><p style="font-size:20px;font-weight:700;margin:0 0 10px">Order ID</p><code style="display:block;overflow-wrap:anywhere;background:#07080c;padding:13px;border-radius:10px">${escapeHtml(d.orderId)}</code><p style="font-size:16px">Credit: ${Number(d.credits)} · Price: ${Number(d.price).toLocaleString()} MMK</p>${wave}<p style="color:#aeb4c2;line-height:1.7">${escapeHtml(d.instructions || 'WavePay ဖြင့် ငွေလွှဲပြီး Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။')}</p><label style="display:block;margin:14px 0">Transaction ID<input id="creditPaymentTxId" class="payment-input" placeholder="ဥပမာ TX123456" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:14px;border-radius:12px"></label><label style="display:block;margin:14px 0">ငွေလွှဲ Screenshot<input id="creditPaymentShot" class="payment-input" type="file" accept="image/*" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:12px;border-radius:12px"></label><button id="creditSubmitPaymentBtn" type="button" class="primary-btn google-custom-btn" style="width:100%">Submit Payment</button><div id="creditPaymentStatus" aria-live="polite" style="margin-top:10px"></div></div>`;
-        createBtn.style.display = 'none';
-        const submitBtn = status.querySelector('#creditSubmitPaymentBtn');
-        submitBtn.addEventListener('click', async () => {
-          const tx = status.querySelector('#creditPaymentTxId').value.trim();
-          const file = status.querySelector('#creditPaymentShot').files?.[0];
-          const paymentStatus = status.querySelector('#creditPaymentStatus');
-          if (!tx || !file) { paymentStatus.textContent = 'Transaction ID နဲ့ Screenshot နှစ်ခုလုံး ထည့်ပါ။'; return; }
-          if (file.size > 8 * 1024 * 1024) { paymentStatus.textContent = 'Screenshot ဖိုင်သည် 8MB ထက် မကြီးရပါ။'; return; }
-          submitBtn.disabled = true; submitBtn.textContent = 'Submitting...';
-          const reader = new FileReader();
-          reader.onload = async () => {
-            try {
-              const sr = await fetch(apiUrl('/api/credits/submit'), {method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({transactionId:tx,screenshot:reader.result,orderId:d.orderId})});
-              const sd = await sr.json().catch(() => ({}));
-              if (!sr.ok || !sd.ok) throw new Error(sd.error || 'Payment submit မအောင်မြင်ပါ။');
-              paymentStatus.textContent = sd.message || 'Payment တင်ပြီးပါပြီ။ Admin စစ်ဆေးပြီးမှ Credit ရရှိပါမည်။';
-              submitBtn.textContent = 'Payment Submitted';
-            } catch(err) { paymentStatus.textContent = err.message; submitBtn.disabled = false; submitBtn.textContent = 'Submit Payment'; }
-          };
-          reader.onerror = () => { paymentStatus.textContent = 'Screenshot ဖတ်မရပါ။ ပြန်ရွေးပါ။'; submitBtn.disabled = false; submitBtn.textContent = 'Submit Payment'; };
-          reader.readAsDataURL(file);
-        });
-      } catch(e) {
-        status.textContent = e.message;
-        modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = false);
-        createBtn.disabled = false; createBtn.textContent = 'Create Order';
-      }
-    });
+        status.innerHTML = `<p><b>Order ID:</b> ${escapeHtml(d.orderId)}</p><p>Credit ${d.credits} · ${Number(d.price).toLocaleString()} MMK</p><p>${escapeHtml(d.instructions)}</p><p>Admin အတည်ပြုပြီးမှ Credit ရရှိပါမည်။</p>`;
+      } catch(e) { status.textContent = e.message; modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = false); }
+    }));
   });
   window.refreshRecapCreditBalance = refreshCreditBalance;
   refreshCreditBalance();
@@ -1141,20 +1098,11 @@ function setupRecapUI() {
       if(!r.ok || !d.ok) throw new Error(d.error || 'Voiceover မအောင်မြင်ပါ။');
       let player = document.querySelector('#jamesVoiceAudio');
       if(!player) { player = document.createElement('audio'); player.id='jamesVoiceAudio'; player.controls=true; player.style.display='block'; player.style.width='100%'; btn.insertAdjacentElement('afterend',player); }
-      // Android download managers may fail to save a data: URL directly.
-      // Convert the generated MP3 data URL into a Blob URL for playback and download.
-      const audioResponse = await fetch(d.audio);
-      if (!audioResponse.ok) throw new Error('ဖန်တီးထားသော အသံဖိုင်ကို ဖတ်မရပါ။ ထပ်မံ Prepare လုပ်ကြည့်ပါ။');
-      const audioBlob = await audioResponse.blob();
-      if (!audioBlob.size) throw new Error('အသံဖိုင် အလွတ်ဖြစ်နေပါသည်။ ထပ်မံ Prepare လုပ်ကြည့်ပါ။');
-      if (window.__jamesVoiceObjectUrl) URL.revokeObjectURL(window.__jamesVoiceObjectUrl);
-      const audioUrl = URL.createObjectURL(audioBlob);
-      window.__jamesVoiceObjectUrl = audioUrl;
-      player.src = audioUrl;
-      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး Download voiceover (MP3) ကိုနှိပ်၍ သိမ်းနိုင်ပါတယ်။'; window.refreshRecapCreditBalance?.();
+      player.src = d.audio;
+      if(status) status.textContent = 'အသံဖန်တီးပြီးပါပြီ။ အောက်မှာ နားထောင်နိုင်ပြီး download လုပ်နိုင်ပါတယ်။'; window.refreshRecapCreditBalance?.();
       let link = document.querySelector('#jamesVoiceDownload');
       if(!link) { link=document.createElement('a'); link.id='jamesVoiceDownload'; link.textContent='Download voiceover (MP3)'; link.className='primary-btn'; link.style.display='inline-block'; player.insertAdjacentElement('afterend',link); }
-      link.href=audioUrl; link.download='james-voiceover.mp3'; link.setAttribute('type','audio/mpeg');
+      link.href=d.audio; link.download='james-voiceover.mp3';
     } catch(e) {
       // Free fallback: browser/OS voices. This previews speech only; it cannot create an MP3.
       if ('speechSynthesis' in window && window.SpeechSynthesisUtterance) {
