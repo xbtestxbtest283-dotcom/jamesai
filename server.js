@@ -28,11 +28,16 @@ app.use((req, res, next) => {
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 
-const apiKey = String(process.env.OPENAI_API_KEY || "")
-  .trim()
-  .replace(/^['"]|['"]$/g, "");
-
-const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const cleanEnv = (value) => String(value || "").trim().replace(/^['"]|['"]$/g, "");
+// James AI is intentionally locked to OpenRouter free routing only.
+// Never fall back to an OpenAI key or a paid model if the free route is unavailable.
+const openRouterKey = cleanEnv(process.env.OPENROUTER_API_KEY);
+const usingOpenRouter = Boolean(openRouterKey);
+const requestedModel = cleanEnv(process.env.OPENROUTER_MODEL || "openrouter/free");
+const isFreeModel = (id) => id === "openrouter/free" || /:free$/i.test(id);
+const model = isFreeModel(requestedModel) ? requestedModel : "openrouter/free";
+const fallbackModels = cleanEnv(process.env.OPENROUTER_FALLBACK_MODELS || "")
+  .split(",").map(x => x.trim()).filter(x => x && isFreeModel(x));
 const execFileAsync = promisify(execFile);
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
@@ -264,9 +269,46 @@ function paymentInfoFor(planId, user) {
 }
 
 
-const client = apiKey
-  ? new OpenAI({ apiKey })
+const client = usingOpenRouter
+  ? new OpenAI({ apiKey: openRouterKey, baseURL: "https://openrouter.ai/api/v1", defaultHeaders: { "HTTP-Referer": cleanEnv(process.env.OPENROUTER_SITE_URL), "X-Title": "James AI" } })
   : null;
+
+// Use Chat Completions for OpenRouter compatibility. Try configured fallback models
+// when a free model is rate-limited or temporarily unavailable.
+function toChatContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return String(content ?? "");
+  return content.map(part => {
+    if (part?.type === "input_text") return { type: "text", text: String(part.text || "") };
+    if (part?.type === "input_image") return { type: "image_url", image_url: { url: part.image_url } };
+    if (part?.type === "text" || part?.type === "image_url") return part;
+    return { type: "text", text: String(part?.text || "") };
+  });
+}
+async function createAICompletion({ instructions, input }) {
+  if (!client) throw Object.assign(new Error("OPENROUTER_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။"), { status: 500 });
+  const inputMessages = Array.isArray(input)
+    ? input.filter(x => x && ["user", "assistant", "system"].includes(x.role)).map(x => ({ role: x.role, content: toChatContent(x.content) }))
+    : [{ role: "user", content: String(input ?? "") }];
+  const messages = [{ role: "system", content: instructions }, ...inputMessages];
+  const models = usingOpenRouter ? [...new Set([model, ...fallbackModels])] : [model];
+  let lastError;
+  for (let i = 0; i < models.length; i++) {
+    try {
+      const response = await client.chat.completions.create({ model: models[i], messages, max_tokens: 2048 });
+      const reply = String(response.choices?.[0]?.message?.content || "");
+      return { output_text: reply, model: models[i] };
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.status || error?.response?.status || 0);
+      const canFallback = usingOpenRouter && i < models.length - 1 && (status === 429 || status === 408 || status >= 500 || status === 404);
+      if (!canFallback) throw error;
+      console.warn(`AI model ${models[i]} failed (${status}); trying fallback model ${models[i + 1]}`);
+      if (status === 429) await new Promise(resolve => setTimeout(resolve, 900));
+    }
+  }
+  throw lastError || new Error("AI model မရနိုင်ပါ။ ခဏနေပြန်ကြိုးစားပါ။");
+}
 
 app.use(express.json({ limit: "30mb" }));
 
@@ -506,48 +548,15 @@ const CREDIT_PACKS = {
 app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
   const packId = String(req.body?.packId || "");
   const pack = CREDIT_PACKS[packId];
+  const customerName = String(req.body?.name || "").trim().slice(0,100);
+  const phone = String(req.body?.phone || "").trim().slice(0,40);
   if (!pack) return res.status(400).json({ok:false,error:"Credit pack မမှန်ပါ။"});
+  if (!customerName || !phone) return res.status(400).json({ok:false,error:"ဝယ်ယူရာတွင် အသုံးပြုမည့် Name နှင့် ဖုန်းနံပါတ် ထည့်ပါ။"});
   const user = req.appUser;
-  // Buyer identity comes from the signed-in account. WavePay recipient details
-  // match the Plus/Pro purchase flow through WAVE_PAY_PHONE and WAVE_PAY_NAME.
-  const customerName = String(user.name || user.email || "James AI user").trim().slice(0,100);
-  const phone = String(user.phone || "").trim().slice(0,40);
   const orderId = `CR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  const creditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
-  // Keep every credit order so older orders remain manageable in Admin.
-  if (!Array.isArray(user.creditOrders)) user.creditOrders = user.pendingCreditOrder ? [user.pendingCreditOrder] : [];
-  user.creditOrders.push(creditOrder);
-  user.pendingCreditOrder = creditOrder;
+  user.pendingCreditOrder = { orderId, packId, credits:pack.credits, price:pack.price, customerName, phone, status:"pending", createdAt:nowMs() };
   await saveUsers();
-  res.json({
-    ok:true, orderId, credits:pack.credits, price:pack.price,
-    wavePayPhone: WAVE_PAY_PHONE, wavePayName: WAVE_PAY_NAME,
-    instructions: WAVE_PAY_PHONE
-      ? "အောက်ပါ WavePay နံပါတ်သို့ ငွေလွှဲပါ။ ပြီးရင် Transaction ID နဲ့ ငွေလွှဲ Screenshot ကို Submit Payment လုပ်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။"
-      : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ Admin ထံ ဆက်သွယ်ပါ။"
-  });
-});
-
-app.post("/api/credits/submit", requireGoogleLogin, async (req,res) => {
-  const user = req.appUser;
-  const requestedOrderId = String(req.body?.orderId || "").trim();
-  const orderList = Array.isArray(user.creditOrders) ? user.creditOrders : [];
-  const order = requestedOrderId
-    ? orderList.find(item => item?.orderId === requestedOrderId) || (user.pendingCreditOrder?.orderId === requestedOrderId ? user.pendingCreditOrder : null)
-    : user.pendingCreditOrder;
-  if (!order || !["pending", "payment_submitted"].includes(String(order.status || "pending"))) {
-    return res.status(400).json({ok:false,error:"Pending credit order မတွေ့ပါ။ Credit Order အသစ်တင်ရန် လိုအပ်နိုင်ပါတယ်။"});
-  }
-  const transactionId = String(req.body?.transactionId || "").trim().slice(0,160);
-  const screenshot = String(req.body?.screenshot || "").trim();
-  if (!transactionId) return res.status(400).json({ok:false,error:"Transaction ID ထည့်ပါ။"});
-  if (!screenshot.startsWith("data:image/")) return res.status(400).json({ok:false,error:"ငွေလွှဲ Screenshot တင်ပါ။"});
-  order.transactionId = transactionId;
-  order.screenshot = screenshot;
-  order.submittedAt = nowMs();
-  order.status = "payment_submitted";
-  await saveUsers();
-  res.json({ok:true,message:"Payment တင်ပြီးပါပြီ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမယ်။"});
+  res.json({ok:true, orderId, credits:pack.credits, price:pack.price, instructions:"ငွေပေးချေမှုအတွက် Admin ထံ ဆက်သွယ်ပါ။ Admin အတည်ပြုပြီးမှ Credit ထည့်ပေးပါမည်။"});
 });
 
 app.get("/api/credits", requireGoogleLogin, async (req,res) => {
@@ -562,18 +571,6 @@ app.get("/api/credits", requireGoogleLogin, async (req,res) => {
 function isActionableOrder(order) {
   return !!order && ["pending", "payment_submitted"].includes(String(order.status || "pending"));
 }
-function allUserCreditOrders(user) {
-  const list = Array.isArray(user?.creditOrders) ? user.creditOrders : [];
-  const pending = user?.pendingCreditOrder;
-  if (pending && !list.some(o => o?.orderId && o.orderId === pending.orderId)) list.push(pending);
-  if (user && !Array.isArray(user.creditOrders)) user.creditOrders = list;
-  return list;
-}
-function findUserCreditOrder(user, orderId) {
-  const orders = allUserCreditOrders(user);
-  return orders.find(o => String(o?.orderId || "") === String(orderId || "")) ||
-    (!orderId ? user?.pendingCreditOrder : null);
-}
 
 app.post("/api/admin/credits/approve", async (req,res) => {
   const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
@@ -581,14 +578,10 @@ app.post("/api/admin/credits/approve", async (req,res) => {
   const sub = String(req.body?.sub || "").trim();
   const user = users[sub];
   const orderId = String(req.body?.orderId || "").trim();
-  const order = findUserCreditOrder(user, orderId);
-  if (!order) return res.status(404).json({ok:false,error:"Credit order not found. Reload orders and try again."});
-  // An already-approved order must never credit the balance twice.
-  if (String(order.status) === "approved") return res.json({ok:true,alreadyApproved:true,credits:Number(user.creditBalance ?? 0)});
-  if (!isActionableOrder(order)) return res.status(409).json({ok:false,error:"This credit order has already been processed."});
-  user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits || 0);
+  const order = user?.pendingCreditOrder;
+  if (!order || !isActionableOrder(order) || (orderId && order.orderId !== orderId)) return res.status(404).json({ok:false,error:"Credit order not found or already processed. Reload orders and try again."});
+  user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits);
   order.status = "approved"; order.approvedAt = nowMs();
-  if (user.pendingCreditOrder?.orderId === order.orderId) user.pendingCreditOrder = order;
   await saveUsers();
   res.json({ok:true, credits:user.creditBalance});
 });
@@ -598,9 +591,8 @@ app.post("/api/admin/credits/reject", async (req,res) => {
   if (!ADMIN_PAYMENT_SECRET || secret !== ADMIN_PAYMENT_SECRET) return res.status(403).json({ok:false,error:"Admin authorization failed."});
   const user = users[String(req.body?.sub || "").trim()];
   const orderId = String(req.body?.orderId || "").trim();
-  const order = findUserCreditOrder(user, orderId);
-  if (!order) return res.status(404).json({ok:false,error:"Credit order not found. Reload orders and try again."});
-  if (!isActionableOrder(order)) return res.status(409).json({ok:false,error:"This credit order has already been processed."});
+  const order = user?.pendingCreditOrder;
+  if (!order || !isActionableOrder(order) || (orderId && order.orderId !== orderId)) return res.status(404).json({ok:false,error:"Credit order not found or already processed. Reload orders and try again."});
   order.status = "rejected"; order.rejectedAt = nowMs();
   await saveUsers(); res.json({ok:true});
 });
@@ -611,9 +603,7 @@ app.get("/api/admin/orders", async (req, res) => {
   const orders = [];
   for (const u of Object.values(users)) {
     if (isActionableOrder(u.pendingPurchase)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"plan",...u.pendingPurchase});
-    for (const creditOrder of allUserCreditOrders(u)) {
-      if (isActionableOrder(creditOrder)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"credit",planId:`Credit ${creditOrder.credits}`,...creditOrder});
-    }
+    if (isActionableOrder(u.pendingCreditOrder)) orders.push({sub:u.sub,email:u.email,name:u.name,type:"credit",planId:`Credit ${u.pendingCreditOrder.credits}`,...u.pendingCreditOrder});
   }
   res.json({ok:true,orders});
 });
@@ -662,7 +652,7 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
     if (!client) {
       return res.status(500).json({
         ok: false,
-        error: "OPENAI_API_KEY မတွေ့ပါ။ .env ကိုစစ်ပါ။"
+        error: "OPENROUTER_API_KEY မတွေ့ပါ။ .env ကိုစစ်ပါ။"
       });
     }
 
@@ -697,8 +687,7 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
     }
     input.push({ role: "user", content });
 
-    const response = await client.responses.create({
-      model,
+    const response = await createAICompletion({
       instructions: `
 You are James AI, a helpful multimodal assistant.
 Answer naturally and accurately. If the user writes Burmese, answer in natural Burmese; if English, answer in English.
@@ -741,15 +730,14 @@ function spendRecapCredit(user) {
 // Video files themselves are not directly decoded here; provide transcript/subtitle text.
 app.post("/api/recap", requireGoogleLogin, async (req, res) => {
   try {
-    if (!client) return res.status(500).json({ ok:false, error:"OPENAI_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။" });
+    if (!client) return res.status(500).json({ ok:false, error:"OPENROUTER_API_KEY မတွေ့ပါ။ Render Environment ကိုစစ်ပါ။" });
     const source = String(req.body?.script || "").trim();
     const language = String(req.body?.language || "my").trim().toLowerCase();
     if (!source) return res.status(400).json({ ok:false, error:"Recap/Subtitle စာသား ထည့်ပေးပါ။ Video ကို တိုက်ရိုက်ဖတ်ခြင်း မပါသေးပါ။" });
     if (source.length > 30000) return res.status(413).json({ok:false,error:"စာသားသည် အလွန်ရှည်နေပါတယ်။ အပိုင်းခွဲပြီး ထည့်ပါ။"});
     const user = makeUser(req.googleUser);
     if (!spendRecapCredit(user)) return res.status(429).json({ok:false,error:"James Recap Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။"});
-    const response = await client.responses.create({
-      model,
+    const response = await createAICompletion({
       instructions: language === "en"
         ? "You are James Recap. Create a concise, accurate video recap in English from the supplied transcript/subtitles. Keep key events in order, do not invent scenes. Output: Title, Recap, and optional subtitle-ready short lines."
         : "သင်သည် James Recap ဖြစ်သည်။ ပေးထားသော ဇာတ်လမ်းစာသား/Subtitle ကို အခြေခံ၍ မြန်မာဘာသာဖြင့် သဘာဝကျပြီး နားလည်လွယ်သော Recap ရေးပါ။ ဖြစ်ရပ်များကို အစဉ်လိုက်ထားပြီး မရှိသောအဖြစ်အပျက်များ မတီထွင်ပါနှင့်။ ခေါင်းစဉ်၊ မြန်မာ Recap နှင့် လိုအပ်ပါက Subtitle အတွက် စာကြောင်းတိုများ ထုတ်ပေးပါ။",

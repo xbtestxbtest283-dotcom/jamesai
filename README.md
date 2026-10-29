@@ -145,3 +145,9 @@ Content-Type: application/json
 Use `plus15` or `pro30` for the other plans. This endpoint resets the paid-plan quota and starts the selected plan's duration.
 
 **Important:** Automatic payment verification requires a provider-specific webhook/API integration. Because no payment provider was specified, this ZIP includes the provider-neutral purchase/order + protected activation structure rather than pretending a payment was verified.
+
+## Free-only AI mode (OpenRouter)
+
+James AI is configured to use OpenRouter's `openrouter/free` router only. It does not fall back to `OPENAI_API_KEY` or any paid model. Set `OPENROUTER_API_KEY` in Render Environment. `OPENROUTER_MODEL` is accepted only when it is `openrouter/free` or a model ID ending in `:free`; otherwise the server forces `openrouter/free`. Fallback model IDs are also accepted only when they are free variants.
+
+Copy `.env.example` as a reference for the environment variables. Free routes still have provider rate limits and may temporarily be unavailable; when that happens James AI will show an error rather than switch to a paid model.
