@@ -166,20 +166,51 @@ function saveUsers() {
 
 function nowMs() { return Date.now(); }
 const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DAILY_RECAP_CREDITS = 3;
+
+// Keep daily allowance and purchased credits in separate buckets. Daily credits
+// reset every 24 hours; purchased credits never expire.
+function ensureRecapCredits(user) {
+  const now = nowMs();
+  if (!Number.isFinite(Number(user.dailyCreditBalance)) || !Number.isFinite(Number(user.purchasedCreditBalance))) {
+    const legacyBalance = Math.max(0, Number(user.creditBalance ?? DAILY_RECAP_CREDITS) || 0);
+    const approvedOrders = Array.isArray(user.creditOrders) ? [...user.creditOrders] : [];
+    if (user.pendingCreditOrder && !approvedOrders.some(order => order?.orderId && order.orderId === user.pendingCreditOrder.orderId)) {
+      approvedOrders.push(user.pendingCreditOrder);
+    }
+    const approvedPurchased = approvedOrders
+      .filter(order => String(order?.status) === "approved")
+      .reduce((sum, order) => sum + Math.max(0, Number(order?.credits) || 0), 0);
+    // One-time migration: preserve any old balance above the daily 3 and
+    // recover approved purchase packs recorded in the user's order history.
+    user.purchasedCreditBalance = Math.max(0, legacyBalance - DAILY_RECAP_CREDITS, approvedPurchased);
+    user.dailyCreditBalance = DAILY_RECAP_CREDITS;
+    user.dailyCreditResetAt = now;
+  }
+  if (!user.dailyCreditResetAt) user.dailyCreditResetAt = now;
+  if (now >= Number(user.dailyCreditResetAt) + QUOTA_WINDOW_MS) {
+    user.dailyCreditBalance = DAILY_RECAP_CREDITS;
+    user.dailyCreditResetAt = now;
+  }
+  user.dailyCreditBalance = Math.max(0, Number(user.dailyCreditBalance) || 0);
+  user.purchasedCreditBalance = Math.max(0, Number(user.purchasedCreditBalance) || 0);
+  user.creditBalance = user.dailyCreditBalance + user.purchasedCreditBalance; // legacy/UI compatibility
+  return user;
+}
+function totalRecapCredits(user) {
+  ensureRecapCredits(user);
+  return user.dailyCreditBalance + user.purchasedCreditBalance;
+}
 function makeUser(user) {
   const existing = users[user.sub] || {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
     plan: "free", planStartedAt: null, planExpiresAt: null,
     messageCount: 0, imageCount: 0, windowStartedAt: null, freeResetAt: null,
-    pendingPurchase: null, creditBalance: 3, creditResetAt: nowMs(), pendingCreditOrder: null
+    pendingPurchase: null, dailyCreditBalance: DAILY_RECAP_CREDITS,
+    purchasedCreditBalance: 0, dailyCreditResetAt: nowMs(), creditBalance: DAILY_RECAP_CREDITS, pendingCreditOrder: null
   };
   existing.email = user.email; existing.name = user.name; existing.picture = user.picture;
-  if (!Number.isFinite(Number(existing.creditBalance))) existing.creditBalance = 3;
-  if (!existing.creditResetAt) existing.creditResetAt = nowMs();
-  if (nowMs() >= Number(existing.creditResetAt) + QUOTA_WINDOW_MS) {
-    existing.creditBalance = 3;
-    existing.creditResetAt = nowMs();
-  }
+  ensureRecapCredits(existing);
   const now = nowMs();
   if (existing.plan !== "free" && existing.planExpiresAt && now >= existing.planExpiresAt) {
     // Paid plan has ended: return to Free and reset all paid-plan counters.
@@ -458,9 +489,9 @@ app.get("/api/plans", (_req, res) => {
 });
 
 app.get("/api/usage", requireGoogleLogin, async (req, res) => {
-  const user = req.appUser;
+  const user = ensureRecapCredits(req.appUser);
   await saveUsers();
-  res.json({ ok:true, plan:publicPlan(user), plans:planList(), pendingPurchase:user.pendingPurchase || null, credits: Number(user.creditBalance ?? 3), creditResetAt: user.creditResetAt });
+  res.json({ ok:true, plan:publicPlan(user), plans:planList(), pendingPurchase:user.pendingPurchase || null, credits: totalRecapCredits(user), dailyCredits:user.dailyCreditBalance, purchasedCredits:user.purchasedCreditBalance, creditResetAt:user.dailyCreditResetAt });
 });
 
 app.post("/api/purchase", requireGoogleLogin, async (req, res) => {
@@ -551,12 +582,9 @@ app.post("/api/credits/submit", requireGoogleLogin, async (req,res) => {
 });
 
 app.get("/api/credits", requireGoogleLogin, async (req,res) => {
-  const user = req.appUser;
-  if (!Number.isFinite(Number(user.creditBalance))) user.creditBalance = 3;
-  if (!user.creditResetAt || nowMs() >= Number(user.creditResetAt) + QUOTA_WINDOW_MS) {
-    user.creditBalance = 3; user.creditResetAt = nowMs(); await saveUsers();
-  }
-  res.json({ok:true, credits:Number(user.creditBalance), resetAt:user.creditResetAt});
+  const user = ensureRecapCredits(req.appUser);
+  await saveUsers();
+  res.json({ok:true, credits:totalRecapCredits(user), dailyCredits:user.dailyCreditBalance, purchasedCredits:user.purchasedCreditBalance, resetAt:user.dailyCreditResetAt});
 });
 
 function isActionableOrder(order) {
@@ -584,13 +612,15 @@ app.post("/api/admin/credits/approve", async (req,res) => {
   const order = findUserCreditOrder(user, orderId);
   if (!order) return res.status(404).json({ok:false,error:"Credit order not found. Reload orders and try again."});
   // An already-approved order must never credit the balance twice.
-  if (String(order.status) === "approved") return res.json({ok:true,alreadyApproved:true,credits:Number(user.creditBalance ?? 0)});
+  ensureRecapCredits(user);
+  if (String(order.status) === "approved") return res.json({ok:true,alreadyApproved:true,credits:totalRecapCredits(user)});
   if (!isActionableOrder(order)) return res.status(409).json({ok:false,error:"This credit order has already been processed."});
-  user.creditBalance = Number(user.creditBalance ?? 3) + Number(order.credits || 0);
+  user.purchasedCreditBalance += Math.max(0, Number(order.credits) || 0);
+  user.creditBalance = totalRecapCredits(user);
   order.status = "approved"; order.approvedAt = nowMs();
   if (user.pendingCreditOrder?.orderId === order.orderId) user.pendingCreditOrder = order;
   await saveUsers();
-  res.json({ok:true, credits:user.creditBalance});
+  res.json({ok:true, credits:totalRecapCredits(user), dailyCredits:user.dailyCreditBalance, purchasedCredits:user.purchasedCreditBalance});
 });
 
 app.post("/api/admin/credits/reject", async (req,res) => {
@@ -728,12 +758,11 @@ Help with general questions, programming, study, translation, writing, math, exp
 
 
 function spendRecapCredit(user) {
-  if (!Number.isFinite(Number(user.creditBalance))) user.creditBalance = 3;
-  if (!user.creditResetAt || nowMs() >= Number(user.creditResetAt) + QUOTA_WINDOW_MS) {
-    user.creditBalance = 3; user.creditResetAt = nowMs();
-  }
-  if (Number(user.creditBalance) <= 0) return false;
-  user.creditBalance = Number(user.creditBalance) - 1;
+  ensureRecapCredits(user);
+  if (user.dailyCreditBalance > 0) user.dailyCreditBalance -= 1;
+  else if (user.purchasedCreditBalance > 0) user.purchasedCreditBalance -= 1;
+  else return false;
+  user.creditBalance = totalRecapCredits(user);
   return true;
 }
 
@@ -824,7 +853,7 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။" });
     if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
     const recapUser = makeUser(req.googleUser);
-    if (Number(recapUser.creditBalance ?? 3) <= 0) return res.status(429).json({ ok:false, error:"James Movie Recap အတွက် Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။" });
+    if (totalRecapCredits(recapUser) <= 0) return res.status(429).json({ ok:false, error:"James Movie Recap အတွက် Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။" });
     const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
     tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jamesai-export-"));
     const inputPath = path.join(tempDir, "source-video");
