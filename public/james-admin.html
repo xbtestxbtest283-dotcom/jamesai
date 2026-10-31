@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>James AI Admin</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#090d16;color:#edf2ff;font:15px system-ui,Arial,sans-serif}
+.wrap{max-width:1100px;margin:auto;padding:22px}.panel{background:#111827;border:1px solid #263248;border-radius:16px;padding:18px;margin:14px 0}
+h1{font-size:24px;margin:4px 0 16px}.muted{color:#9aa9c2}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;border-radius:9px;border:1px solid #34445d;background:#0b1220;color:#f5f7ff;padding:11px;min-height:43px}
+input{min-width:180px;max-width:100%}button{cursor:pointer;background:#243653}button.primary{background:#2563eb;border-color:#2563eb}button.danger{background:#9f2735;border-color:#9f2735}button.good{background:#087b58;border-color:#087b58}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}nav button.active{background:#2563eb}.hidden{display:none!important}
+table{width:100%;border-collapse:collapse;min-width:720px}th,td{text-align:left;padding:11px;border-bottom:1px solid #29364a;vertical-align:top}
+.tablewrap{overflow:auto}.pill{display:inline-block;padding:3px 8px;border-radius:20px;background:#263653}.pill.banned{background:#842c38}
+.actions{display:flex;gap:6px;flex-wrap:wrap}.actions button{padding:7px 10px;min-height:35px;font-size:13px}
+#status{white-space:pre-wrap;color:#fbbf24}.cardgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.stat{font-size:26px;font-weight:700}.small{font-size:13px}.usercard{border:1px solid #29364a;border-radius:12px;padding:13px;margin:9px 0}
+@media(max-width:600px){.wrap{padding:13px}.panel{padding:13px}h1{font-size:21px}input{width:100%}.row>*{flex:1}}
+</style></head>
+<body><main class="wrap">
+<h1>James AI — Admin Dashboard</h1>
+<div id="login" class="panel"><h2>Admin Login</h2><p class="muted">Admin Key ဖြင့်သာ ဝင်ရောက်နိုင်သည်။</p><div class="row"><input id="key" type="password" placeholder="ကိုယ်ပိုင် Admin Key" autocomplete="current-password"><button class="primary" id="loginBtn">Login</button></div></div>
+<div id="app" class="hidden">
+<div class="row"><span class="pill">Admin-only access</span><span class="muted small" id="total"></span><button id="logout" style="margin-left:auto">Logout</button></div>
+<nav><button data-tab="users" class="active">Users</button><button data-tab="credits">Credit</button><button data-tab="plus">Plus</button><button data-tab="orders">Payment Orders</button><button data-tab="audit">Audit Logs</button></nav>
+<p id="status"></p>
+<section id="users" class="panel"><h2>Account Management</h2><div class="row"><input id="search" placeholder="Username / Email / User ID ရှာရန်"><button id="searchBtn" class="primary">Search</button><button id="refresh">Refresh</button></div><div class="tablewrap"><table><thead><tr><th>User</th><th>Status</th><th>Plan</th><th>Credits</th><th>Actions</th></tr></thead><tbody id="userRows"></tbody></table></div></section>
+<section id="credits" class="panel hidden"><h2>Credit Management</h2><p class="muted">User တစ်ဦးကို ရွေးပြီး Credit ထည့်/လျှော့ပါ။</p><div class="row"><input id="creditSub" placeholder="User ID"><input id="creditAmount" type="number" min="1" placeholder="Credit ပမာဏ"><button id="creditAdd" class="good">Add Credit</button><button id="creditRemove" class="danger">Remove Credit</button><button id="historyBtn">Credit History</button></div><pre id="history" class="small"></pre></section>
+<section id="plus" class="panel hidden"><h2>Plus Plan Management</h2><div class="row"><input id="plusSub" placeholder="User ID"><select id="planId"><option value="plus7">Plus 7 Days</option><option value="plus15">Plus 15 Days</option><option value="pro30">Plus Pro</option></select><input id="plusDays" type="number" min="1" max="3650" placeholder="Days (optional)"><input id="plusExpiry" type="datetime-local"><button id="grantPlus" class="good">Grant / Extend Plus</button><button id="removePlus" class="danger">Remove Plus</button></div><p class="muted small">Expiry date ထည့်ထားလျှင် ထိုရက်ကို အသုံးပြုမည်။ မထည့်လျှင် ရွေးထားသော Plan ၏ Days ကို သုံးမည်။</p></section>
+<section id="orders" class="panel hidden"><h2>Payment Orders</h2><button id="loadOrders">Load Orders</button><div id="orderList"></div></section>
+<section id="audit" class="panel hidden"><h2>Admin Activity Logs</h2><button id="loadAudit">Refresh Logs</button><pre id="auditList" class="small"></pre></section>
+</div></main>
+<script>
+const $=id=>document.getElementById(id);let token=localStorage.getItem("jamesai_admin_token")||"";let users=[];
+function authHeaders(json=false){return {...(json?{"Content-Type":"application/json"}:{}),Authorization:"Bearer "+token};}
+async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{...authHeaders(!!opts.body),...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(r.status===401){logout();throw Error(d.error||"Admin login ပြန်လုပ်ပါ။")}if(!r.ok||d.ok===false)throw Error(d.error||"Request failed");return d;}
+function say(s){$("status").textContent=s||""}
+function logout(){token="";localStorage.removeItem("jamesai_admin_token");$("app").classList.add("hidden");$("login").classList.remove("hidden")}
+async function login(){try{say("Login စစ်ဆေးနေသည်…");const r=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:$("key").value})});const d=await r.json();if(!r.ok)throw Error(d.error||"Login failed");token=d.token;localStorage.setItem("jamesai_admin_token",token);$("login").classList.add("hidden");$("app").classList.remove("hidden");say("");await loadUsers()}catch(e){say(e.message)}}
+$("loginBtn").onclick=login;$("key").addEventListener("keydown",e=>{if(e.key==="Enter")login()});$("logout").onclick=logout;
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("section").forEach(x=>x.classList.toggle("hidden",x.id!==b.dataset.tab));say("")});
+async function loadUsers(){try{const d=await api("/api/admin/users?q="+encodeURIComponent($("search").value));users=d.users;$("total").textContent="Total Users: "+d.total;$("userRows").replaceChildren();for(const u of users){const tr=document.createElement("tr");const name=document.createElement("td");name.innerHTML="";name.append(document.createTextNode((u.name||u.username||"No name")+" "));const em=document.createElement("div");em.className="muted small";em.textContent=u.email;name.append(em);const id=document.createElement("div");id.className="muted small";id.textContent=u.userId;name.append(id);const status=document.createElement("td");const pill=document.createElement("span");pill.className="pill "+(u.status==="banned"?"banned":"");pill.textContent=u.status;status.append(pill);const plan=document.createElement("td");plan.textContent=u.planName+(u.planExpiresAt?" · "+new Date(u.planExpiresAt).toLocaleDateString():"");const credit=document.createElement("td");credit.textContent=u.credits;const act=document.createElement("td");act.className="actions";const make=(label,fn,cls="")=>{const b=document.createElement("button");b.textContent=label;b.className=cls;b.onclick=fn;act.append(b)};make("Credit",()=>{$("creditSub").value=u.sub;document.querySelector('[data-tab="credits"]').click()});make("Plus",()=>{$("plusSub").value=u.sub;document.querySelector('[data-tab="plus"]').click()});if(u.status==="banned")make("Unban",()=>userAction(u.sub,"unban"),"good");else make("Ban",()=>banUser(u),"danger");tr.append(name,status,plan,credit,act);$("userRows").append(tr)}}catch(e){say(e.message)}}
+async function userAction(sub,action){try{await api(`/api/admin/users/${encodeURIComponent(sub)}/${action}`,{method:"POST",body:"{}"});say(action+" ပြီးပါပြီ");await loadUsers()}catch(e){say(e.message)}}
+async function banUser(u){const reason=prompt("Ban Reason ထည့်ပါ:", "စည်းကမ်းချိုးဖောက်မှု");if(reason===null)return;try{await api(`/api/admin/users/${encodeURIComponent(u.sub)}/ban`,{method:"POST",body:JSON.stringify({reason})});say("User ကို Ban လုပ်ပြီးပါပြီ");await loadUsers()}catch(e){say(e.message)}}
+$("searchBtn").onclick=loadUsers;$("refresh").onclick=loadUsers;$("search").addEventListener("keydown",e=>{if(e.key==="Enter")loadUsers()});
+async function credit(mode){const sub=$("creditSub").value.trim(),amount=Number($("creditAmount").value);if(!sub||!Number.isInteger(amount)||amount<1)return say("User ID နှင့် Credit ပမာဏ ထည့်ပါ။");try{const d=await api(`/api/admin/users/${encodeURIComponent(sub)}/credits`,{method:"POST",body:JSON.stringify({mode,amount})});say("အောင်မြင်ပါပြီ။ လက်ကျန် Credit: "+d.user.credits);await loadUsers()}catch(e){say(e.message)}}
+$("creditAdd").onclick=()=>credit("add");$("creditRemove").onclick=()=>credit("remove");
+$("historyBtn").onclick=async()=>{try{const d=await api(`/api/admin/users/${encodeURIComponent($("creditSub").value.trim())}/credits/history`);$("history").textContent=JSON.stringify(d.history,null,2)}catch(e){say(e.message)}};
+$("grantPlus").onclick=async()=>{const sub=$("plusSub").value.trim();if(!sub)return say("User ID ထည့်ပါ။");const body={planId:$("planId").value};if($("plusDays").value)body.days=Number($("plusDays").value);if($("plusExpiry").value)body.expiresAt=new Date($("plusExpiry").value).toISOString();try{const d=await api(`/api/admin/users/${encodeURIComponent(sub)}/plus`,{method:"POST",body:JSON.stringify(body)});say("Plus ပေးပြီးပါပြီ။ Expiry: "+new Date(d.user.planExpiresAt).toLocaleString());await loadUsers()}catch(e){say(e.message)}};
+$("removePlus").onclick=async()=>{const sub=$("plusSub").value.trim();if(!sub)return say("User ID ထည့်ပါ။");try{await api(`/api/admin/users/${encodeURIComponent(sub)}/plus`,{method:"DELETE"});say("Plus ဖယ်ရှားပြီးပါပြီ။");await loadUsers()}catch(e){say(e.message)}};
+async function loadOrders(){try{const d=await api("/api/james-admin/orders");$("orderList").textContent=JSON.stringify(d.orders,null,2)}catch(e){say(e.message)}}
+$("loadOrders").onclick=loadOrders;
+$("loadAudit").onclick=async()=>{try{const d=await api("/api/admin/audit");$("auditList").textContent=JSON.stringify(d.logs,null,2)}catch(e){say(e.message)}};
+(async()=>{if(token){try{await api("/api/admin/me");$("login").classList.add("hidden");$("app").classList.remove("hidden");await loadUsers()}catch{logout()}}})();
+</script></body></html>
