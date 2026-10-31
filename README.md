@@ -145,3 +145,18 @@ Content-Type: application/json
 Use `plus15` or `pro30` for the other plans. This endpoint resets the paid-plan quota and starts the selected plan's duration.
 
 **Important:** Automatic payment verification requires a provider-specific webhook/API integration. Because no payment provider was specified, this ZIP includes the provider-neutral purchase/order + protected activation structure rather than pretending a payment was verified.
+
+
+## James AI Admin Dashboard
+
+After deploying the updated project, open `/james-admin.html` on the same James AI domain.
+Set these two private variables in the hosting provider's Environment settings (or local `.env`):
+
+- `ADMIN_KEY`: your own private key used on the Admin Login screen.
+- `ADMIN_TOKEN_SECRET`: a separate long random secret used to sign short-lived admin sessions.
+
+The admin session expires after 12 hours. Do not put either value in frontend JavaScript, commit `.env`, or share the key with regular users. The Admin API verifies the signed session on the server.
+
+Admin features include account search, ban/unban with reason, credit add/remove and history, Plus grant/custom expiry/removal, existing payment-order approval, and admin audit logs. User account and plan/credit data continue to use the existing `jamesai_user_data` Supabase table. The audit log is stored in `data/admin-audit.json`; on Render, attach a persistent disk and set `DATA_DIR` to its mount path if you want audit logs to survive deploys/restarts.
+
+See `.env.example` for the new Admin environment variable names. Keep your current `.env` values and add only the new Admin variables; do not replace your existing Supabase or Google credentials with the placeholders in the example.

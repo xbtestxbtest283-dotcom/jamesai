@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import crypto from "crypto";
 import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -70,6 +71,10 @@ const PAYMENT_URLS = {
 const WAVE_PAY_PHONE = String(process.env.WAVE_PAY_PHONE || "").trim();
 const WAVE_PAY_NAME = String(process.env.WAVE_PAY_NAME || "").trim();
 const ADMIN_PAYMENT_SECRET = String(process.env.ADMIN_PAYMENT_SECRET || "").trim();
+const ADMIN_KEY = String(process.env.ADMIN_KEY || "").trim();
+const ADMIN_TOKEN_SECRET = String(process.env.ADMIN_TOKEN_SECRET || ADMIN_KEY || "").trim();
+const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+const ADMIN_AUDIT_FILE = path.join(DATA_DIR, "admin-audit.json");
 
 const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
 const supabaseKey = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
@@ -202,6 +207,7 @@ function spendOneRecapCredit(user) {
 function makeUser(user) {
   const existing = users[user.sub] || {
     sub: user.sub, email: user.email, name: user.name, picture: user.picture,
+    username: user.name || "", status: "active", createdAt: new Date().toISOString(),
     plan: "free", planStartedAt: null, planExpiresAt: null,
     messageCount: 0, imageCount: 0, windowStartedAt: null, freeResetAt: null,
     pendingPurchase: null, creditBalance: 3, dailyCredits: 3, purchasedCredits: 0,
@@ -417,6 +423,12 @@ async function requireGoogleLogin(req, res, next) {
   }
   req.googleUser = user;
   req.appUser = makeUser(user);
+  if (req.appUser.status === "banned") {
+    return res.status(403).json({
+      ok: false, code: "ACCOUNT_BANNED",
+      error: `ဤ Account ကို Ban ထားပါသည်။ Reason: ${String(req.appUser.banReason || "မဖော်ပြထားပါ")}`
+    });
+  }
   next();
 }
 
@@ -603,6 +615,158 @@ function findUserCreditOrder(user, orderId) {
   return orders.find(o => String(o?.orderId || "") === String(orderId || "")) ||
     (!orderId ? user?.pendingCreditOrder : null);
 }
+
+
+// -------------------- Secure James AI Admin --------------------
+function safeEqual(a, b) {
+  const aa = Buffer.from(String(a || ""));
+  const bb = Buffer.from(String(b || ""));
+  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+}
+function signAdminPayload(payload) {
+  return crypto.createHmac("sha256", ADMIN_TOKEN_SECRET).update(payload).digest("hex");
+}
+function issueAdminToken() {
+  const payload = Buffer.from(JSON.stringify({ role: "admin", exp: nowMs() + ADMIN_TOKEN_TTL_MS })).toString("base64url");
+  return `${payload}.${signAdminPayload(payload)}`;
+}
+function requireAdmin(req, res, next) {
+  if (!ADMIN_KEY || !ADMIN_TOKEN_SECRET) {
+    return res.status(503).json({ ok:false, error:"Admin ကို .env ထဲတွင် ADMIN_KEY သတ်မှတ်ပြီးမှ အသုံးပြုနိုင်ပါမည်။" });
+  }
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature || !safeEqual(signature, signAdminPayload(payload))) {
+    return res.status(401).json({ ok:false, error:"Admin login လုပ်ပါ။" });
+  }
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (data.role !== "admin" || !Number.isFinite(data.exp) || data.exp < nowMs()) {
+      return res.status(401).json({ ok:false, error:"Admin session သက်တမ်းကုန်သွားပါပြီ။ ပြန်ဝင်ပါ။" });
+    }
+  } catch {
+    return res.status(401).json({ ok:false, error:"Admin session မမှန်ပါ။" });
+  }
+  next();
+}
+function readAdminAudit() {
+  try {
+    const value = JSON.parse(fs.readFileSync(ADMIN_AUDIT_FILE, "utf8"));
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+}
+async function writeAdminAudit(action, target, details = {}) {
+  const rows = readAdminAudit();
+  rows.unshift({ id: crypto.randomUUID(), action, target, details, at: nowMs() });
+  await fs.promises.writeFile(ADMIN_AUDIT_FILE, JSON.stringify(rows.slice(0, 2000), null, 2), "utf8");
+}
+function adminUserSummary(sub, user) {
+  ensureCreditWallet(user);
+  const plan = PLANS[user.plan] || PLANS.free;
+  return {
+    sub, userId: sub, name: user.name || "", email: user.email || "",
+    username: user.username || user.name || "",
+    status: user.status === "banned" ? "banned" : "active",
+    banReason: user.banReason || "",
+    plan: plan.id, planName: plan.name, planExpiresAt: user.planExpiresAt || null,
+    credits: user.creditBalance, dailyCredits: user.dailyCredits, purchasedCredits: user.purchasedCredits,
+    createdAt: user.createdAt || null
+  };
+}
+app.post("/api/admin/login", (req, res) => {
+  const supplied = String(req.body?.key || "");
+  if (!ADMIN_KEY || !safeEqual(supplied, ADMIN_KEY)) {
+    return res.status(401).json({ ok:false, error:"Admin Key မမှန်ပါ။" });
+  }
+  res.json({ ok:true, token:issueAdminToken(), expiresIn:ADMIN_TOKEN_TTL_MS });
+});
+app.get("/api/admin/me", requireAdmin, (_req,res) => res.json({ ok:true, role:"admin" }));
+app.get("/api/admin/users", requireAdmin, (req,res) => {
+  const q = String(req.query.q || "").trim().toLowerCase();
+  const result = Object.entries(users).map(([sub,u]) => adminUserSummary(sub,u))
+    .filter(u => !q || [u.sub,u.userId,u.name,u.username,u.email].some(v => String(v).toLowerCase().includes(q)))
+    .sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  res.json({ ok:true, users:result, total:Object.keys(users).length });
+});
+app.post("/api/admin/users/:sub/ban", requireAdmin, async (req,res) => {
+  const sub = String(req.params.sub || "");
+  const user = users[sub];
+  if (!user) return res.status(404).json({ ok:false,error:"User မတွေ့ပါ။" });
+  const reason = String(req.body?.reason || "").trim().slice(0,500);
+  user.status = "banned"; user.banReason = reason || "Admin မှ Ban ထားသည်"; user.bannedAt = nowMs();
+  await saveUsers(); await writeAdminAudit("ban",sub,{reason:user.banReason});
+  res.json({ok:true,user:adminUserSummary(sub,user)});
+});
+app.post("/api/admin/users/:sub/unban", requireAdmin, async (req,res) => {
+  const sub = String(req.params.sub || "");
+  const user = users[sub];
+  if (!user) return res.status(404).json({ok:false,error:"User မတွေ့ပါ။"});
+  user.status = "active"; user.banReason = ""; user.unbannedAt = nowMs();
+  await saveUsers(); await writeAdminAudit("unban",sub);
+  res.json({ok:true,user:adminUserSummary(sub,user)});
+});
+app.post("/api/admin/users/:sub/credits", requireAdmin, async (req,res) => {
+  const sub = String(req.params.sub || "");
+  const user = users[sub];
+  if (!user) return res.status(404).json({ok:false,error:"User မတွေ့ပါ။"});
+  const amount = Math.floor(Number(req.body?.amount));
+  const mode = String(req.body?.mode || "add");
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1000000 || !["add","remove"].includes(mode)) {
+    return res.status(400).json({ok:false,error:"Credit ပမာဏ မမှန်ပါ။"});
+  }
+  ensureCreditWallet(user);
+  const before = user.purchasedCredits;
+  if (mode === "add") user.purchasedCredits += amount;
+  else {
+    const available = user.dailyCredits + user.purchasedCredits;
+    if (amount > available) return res.status(400).json({ok:false,error:"လက်ရှိ Credit ထက် ပိုလျှော့၍မရပါ။"});
+    const fromDaily = Math.min(user.dailyCredits, amount);
+    user.dailyCredits -= fromDaily;
+    user.purchasedCredits = Math.max(0, user.purchasedCredits - (amount - fromDaily));
+  }
+  ensureCreditWallet(user);
+  if (!Array.isArray(user.creditHistory)) user.creditHistory = [];
+  user.creditHistory.unshift({ id:crypto.randomUUID(), mode, amount, before, after:user.creditBalance, at:nowMs(), source:"admin" });
+  user.creditHistory = user.creditHistory.slice(0,500);
+  await saveUsers(); await writeAdminAudit(`credit_${mode}`,sub,{amount,balance:user.creditBalance});
+  res.json({ok:true,user:adminUserSummary(sub,user)});
+});
+app.get("/api/admin/users/:sub/credits/history", requireAdmin, (req,res) => {
+  const user = users[String(req.params.sub || "")];
+  if (!user) return res.status(404).json({ok:false,error:"User မတွေ့ပါ။"});
+  res.json({ok:true,history:Array.isArray(user.creditHistory)?user.creditHistory:[]});
+});
+app.post("/api/admin/users/:sub/plus", requireAdmin, async (req,res) => {
+  const sub = String(req.params.sub || "");
+  const user = users[sub];
+  if (!user) return res.status(404).json({ok:false,error:"User မတွေ့ပါ။"});
+  const planId = String(req.body?.planId || "plus15");
+  if (!["plus7","plus15","pro30"].includes(planId)) return res.status(400).json({ok:false,error:"Plus Plan မမှန်ပါ။"});
+  const days = Number(req.body?.days || PLANS[planId].durationDays);
+  if (!Number.isInteger(days) || days < 1 || days > 3650) return res.status(400).json({ok:false,error:"သက်တမ်းရက် မမှန်ပါ။"});
+  const customExpiry = req.body?.expiresAt ? new Date(req.body.expiresAt).getTime() : null;
+  if (req.body?.expiresAt && (!Number.isFinite(customExpiry) || customExpiry <= nowMs())) return res.status(400).json({ok:false,error:"ကုန်ဆုံးရက် မမှန်ပါ။"});
+  const now = nowMs();
+  const start = now;
+  const extensionBase = user.plan !== "free" && Number(user.planExpiresAt) > now
+    ? Number(user.planExpiresAt) : now;
+  user.plan = planId; user.planStartedAt = start;
+  user.planExpiresAt = customExpiry || extensionBase + days * QUOTA_WINDOW_MS;
+  user.messageCount = 0; user.imageCount = 0; user.windowStartedAt = start; user.freeResetAt = null;
+  await saveUsers(); await writeAdminAudit("plus_grant",sub,{planId,expiresAt:user.planExpiresAt});
+  res.json({ok:true,user:adminUserSummary(sub,user)});
+});
+app.delete("/api/admin/users/:sub/plus", requireAdmin, async (req,res) => {
+  const sub = String(req.params.sub || "");
+  const user = users[sub];
+  if (!user) return res.status(404).json({ok:false,error:"User မတွေ့ပါ။"});
+  user.plan = "free"; user.planStartedAt = null; user.planExpiresAt = null;
+  user.messageCount = 0; user.imageCount = 0; user.windowStartedAt = null; user.freeResetAt = null;
+  await saveUsers(); await writeAdminAudit("plus_remove",sub);
+  res.json({ok:true,user:adminUserSummary(sub,user)});
+});
+app.get("/api/admin/audit", requireAdmin, (_req,res) => res.json({ok:true,logs:readAdminAudit().slice(0,300)}));
+
 
 app.post("/api/admin/credits/approve", async (req,res) => {
   const secret = String(req.headers["x-admin-secret"] || req.body?.adminSecret || "").trim();
