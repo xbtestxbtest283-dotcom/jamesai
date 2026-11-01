@@ -866,9 +866,15 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
     const images = attachments.filter((a) => a && typeof a.type === "string" &&
       a.type.startsWith("image/") && typeof a.data === "string" &&
       /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(a.data)).slice(0, 6);
+    // Videos are sampled into still frames in the browser. The model then reads
+    // visible text (OCR-style), images, objects and scene changes from those frames.
+    const videoAttachments = attachments.filter(a => a && a.isVideo === true && Array.isArray(a.frames));
+    const videoFrames = videoAttachments.flatMap(a => a.frames
+      .filter(frame => typeof frame === "string" && /^data:image\/(jpeg|png);base64,/i.test(frame))
+      .slice(0, 12)).slice(0, 16);
 
-    if (!message && images.length === 0) {
-      return res.status(400).json({ ok: false, error: "စာမေးခွန်း သို့မဟုတ် ပုံတစ်ပုံ တင်ပေးပါ။" });
+    if (!message && images.length === 0 && videoFrames.length === 0) {
+      return res.status(400).json({ ok: false, error: "စာမေးခွန်း၊ ပုံ သို့မဟုတ် Video တင်ပေးပါ။" });
     }
 
     const user = makeUser(req.googleUser);
@@ -890,6 +896,13 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
     for (const image of images) {
       content.push({ type: "input_image", image_url: image.data, detail: "high" });
     }
+    if (videoFrames.length) {
+      const names = videoAttachments.map(v => String(v.name || "video")).join(", ");
+      content.push({ type: "input_text", text: `The user attached video file(s): ${names}. The following images are sampled frames in chronological order. Carefully read all visible text, captions, labels, signs, screenshots and other writing in each frame. Describe the visible pictures, objects, people (without identifying them), actions and scene changes. Preserve the order and timestamps if supplied. If text is readable, transcribe it accurately and explain or translate it when the user asks. Do not assume the video audio; only analyze the supplied visual frames.` });
+      for (const frame of videoFrames) {
+        content.push({ type: "input_image", image_url: frame, detail: "high" });
+      }
+    }
     input.push({ role: "user", content });
 
     const response = await client.responses.create({
@@ -897,7 +910,7 @@ app.post("/api/chat", requireGoogleLogin, async (req, res) => {
       instructions: `
 You are James AI, a helpful multimodal assistant.
 Answer naturally and accurately. If the user writes Burmese, answer in natural Burmese; if English, answer in English.
-You can analyze images supplied with the user's message. Read visible text carefully (including Burmese when legible), describe objects and scenes, and answer questions grounded in the image.
+You can analyze images and sampled video frames supplied with the user's message. Read visible text carefully (including Burmese when legible), transcribe captions and on-screen writing, describe pictures, objects and scene changes, and answer questions grounded in the visual content. Video frames arrive in chronological order; do not claim to have analyzed audio.
 If text or details are unclear, say so rather than inventing them. Distinguish what is visible from what you infer.
 Help with general questions, programming, study, translation, writing, math, explanations, OCR, and image understanding.
 `,
