@@ -1251,21 +1251,12 @@ function setupRecapVideoExport() {
     let resultUrl = '';
     try {
       setStatus('Video ကို Server ဆီ ပို့နေပါတယ်… ဖုန်းမှာ encoding မလုပ်ပါ။');
-      const jobResponse = await fetch(apiUrl('/api/recap/export-job'), {
-        method: 'POST',
-        headers: authHeaders({'Content-Type': 'application/json'}),
-        body: JSON.stringify({
-          script,
-          voice: document.querySelector('#recapVoice')?.value || 'female',
-          rate: document.querySelector('#recapVoiceRate')?.value || '-5%',
-          subtitle: document.querySelector('#recapSubtitle')?.checked !== false
-        })
+      const params = new URLSearchParams({
+        script,
+        voice: document.querySelector('#recapVoice')?.value || 'female',
+        rate: document.querySelector('#recapVoiceRate')?.value || '-5%'
       });
-      const jobData = await jobResponse.json().catch(() => ({}));
-      if (!jobResponse.ok || !jobData.ok || !jobData.jobId) {
-        throw new Error(jobData.error || `Export session မစတင်နိုင်ပါ (HTTP ${jobResponse.status})`);
-      }
-      const response = await fetch(apiUrl('/api/recap/export?job=' + encodeURIComponent(jobData.jobId)), {
+      const response = await fetch(apiUrl('/api/recap/export?' + params.toString()), {
         method: 'POST',
         headers: authHeaders({'Content-Type': 'application/octet-stream'}),
         body: file
@@ -1274,7 +1265,7 @@ function setupRecapVideoExport() {
         const detail = await response.json().catch(() => ({}));
         throw new Error(detail.error || `Server Export မအောင်မြင်ပါ (HTTP ${response.status})`);
       }
-      setStatus('Server က Video၊ မြန်မာအသံနဲ့ မြန်မာစာတန်းထိုးကို ပေါင်းစပ်နေပါတယ်… ခဏစောင့်ပါ။');
+      setStatus('Server က Video နဲ့ မြန်မာအသံကို ပေါင်းစပ်နေပါတယ်… ခဏစောင့်ပါ။');
       const blob = await response.blob();
       if (!blob.size) throw new Error('Video ဖိုင်အလွတ် ပြန်ရလာပါတယ်။ ထပ်စမ်းကြည့်ပါ။');
       resultUrl = URL.createObjectURL(blob);
@@ -1287,7 +1278,7 @@ function setupRecapVideoExport() {
         preview.hidden = false;
         if (download) { download.href = resultUrl; download.download = 'james-ai-myanmar-recap.mp4'; }
         preview.scrollIntoView({behavior: 'smooth', block: 'start'});
-        setStatus('Video Export ပြီးပါပြီ။ Subtitle ရွေးထားပါက မြန်မာစာတန်းကို MP4 ထဲ တကယ်ထည့်ပြီးပါပြီ။ အောက်က Download video ကိုနှိပ်ပါ။');
+        setStatus('Video Export ပြီးပါပြီ။ MP4 ဖိုင်ကို အောက်က Download video ကိုနှိပ်ပြီး သိမ်းနိုင်ပါတယ်။');
       } else {
         const a = document.createElement('a'); a.href = resultUrl; a.download = 'james-ai-myanmar-recap.mp4';
         document.body.appendChild(a); a.click(); a.remove();
