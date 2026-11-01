@@ -35,6 +35,13 @@ const apiKey = String(process.env.OPENAI_API_KEY || "")
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const execFileAsync = promisify(execFile);
+
+// Short-lived recap export jobs keep long scripts out of request URLs (avoids HTTP 431).
+const recapExportJobs = new Map();
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [id, job] of recapExportJobs) if (job.createdAt < cutoff) recapExportJobs.delete(id);
+}, 60 * 1000).unref();
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 const pollinationsApiKey = String(process.env.POLLINATIONS_API_KEY || "").trim().replace(/^'|'$/g, "").replace(/^"|"$/g, "");
 const pollinationsImageModel = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
@@ -1010,21 +1017,39 @@ app.post("/api/voice", requireGoogleLogin, async (req, res) => {
   }
 });
 
-// Server-side recap export: heavy video encoding runs on the server, not the phone.
-// Upload the source video as application/octet-stream; output is MP4 (H.264/AAC).
+// Create a short-lived export job. Script text stays in JSON body, never in URL.
+app.post("/api/recap/export-job", requireGoogleLogin, (req, res) => {
+  const script = String(req.body?.script || "").trim();
+  if (!script) return res.status(400).json({ok:false,error:"Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။"});
+  if (script.length > 5000) return res.status(413).json({ok:false,error:"Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။"});
+  const id = crypto.randomUUID();
+  recapExportJobs.set(id, {
+    script,
+    gender: String(req.body?.voice || "female").toLowerCase() === "male" ? "male" : "female",
+    rate: ["-5%", "+0%", "+5%"].includes(String(req.body?.rate || "-5%")) ? String(req.body?.rate || "-5%") : "-5%",
+    userSub: String(req.googleUser.sub),
+    createdAt: Date.now()
+  });
+  res.json({ok:true,jobId:id});
+});
+
+// Upload video separately; URL contains only a short job ID (not the Burmese script).
 app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "application/octet-stream", limit: "150mb" }), async (req, res) => {
   let tempDir = "";
   try {
+    const jobId = String(req.query.job || "");
+    const job = recapExportJobs.get(jobId);
+    if (!job || job.userSub !== String(req.googleUser.sub) || Date.now() - job.createdAt > 15 * 60 * 1000) {
+      return res.status(400).json({ok:false,error:"Export Session သက်တမ်းကုန်သွားပါပြီ။ Export ကို ပြန်စပါ။"});
+    }
+    recapExportJobs.delete(jobId);
     const input = req.body;
     if (!Buffer.isBuffer(input) || !input.length) {
       return res.status(400).json({ ok: false, error: "Video ဖိုင်ကို ပြန်ရွေးပြီး Export လုပ်ပါ။" });
     }
-    const script = String(req.query.script || "").trim();
-    const gender = String(req.query.voice || "female").toLowerCase() === "male" ? "male" : "female";
-    const rateValue = String(req.query.rate || "-5%");
-    const rate = ["-5%", "+0%", "+5%"].includes(rateValue) ? rateValue : "-5%";
-    if (!script) return res.status(400).json({ ok: false, error: "Recap Script ထည့်ပြီးမှ Export လုပ်ပါ။" });
-    if (script.length > 5000) return res.status(413).json({ ok: false, error: "Recap Script သည် 5,000 characters ထက် မကျော်ရပါ။" });
+    const script = job.script;
+    const gender = job.gender;
+    const rate = job.rate;
     const recapUser = makeUser(req.googleUser);
     ensureCreditWallet(recapUser);
     if (recapUser.creditBalance <= 0) return res.status(429).json({ ok:false, error:"James Movie Recap အတွက် Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။" });
@@ -1033,26 +1058,11 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     const inputPath = path.join(tempDir, "source-video");
     const voicePath = path.join(tempDir, "voice.mp3");
     const outputPath = path.join(tempDir, "recap.mp4");
-    const subtitlePath = path.join(tempDir, "myanmar-subtitles.ass");
     await fs.promises.writeFile(inputPath, input);
-    let subtitleCues = [];
-    try { subtitleCues = JSON.parse(decodeURIComponent(String(req.get("X-Recap-Subtitle-Cues") || ""))); } catch {}
-    if (!Array.isArray(subtitleCues)) subtitleCues = [];
-    subtitleCues = subtitleCues.slice(0, 300).filter(c => c && Number.isFinite(Number(c.start)) && Number.isFinite(Number(c.end)) && String(c.text || "").trim());
-    const assTime = seconds => { const n=Math.max(0,Number(seconds)||0); const h=Math.floor(n/3600),m=Math.floor((n%3600)/60),v=(n%60).toFixed(2).padStart(5,"0"); return `${h}:${String(m).padStart(2,"0")}:${v}`; };
-    const assEscape = value => String(value).replace(/\\/g,"\\\\").replace(/{/g,"\\{").replace(/}/g,"\\}").replace(/\r?\n/g,"\\N");
-    if (subtitleCues.length && String(req.query.subtitle || "1") !== "0") {
-      const events = subtitleCues.map(c => `Dialogue: 0,${assTime(c.start)},${assTime(Math.max(Number(c.start)+0.5,Number(c.end)))},Default,,0,0,0,,${assEscape(c.text)}`).join("\n");
-      const ass = `[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Noto Sans Myanmar,38,&H00FFFFFF,&H000000FF,&H00101010,&H90000000,0,0,0,0,100,100,0,0,1,2,1,2,50,50,42,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n${events}\n`;
-      await fs.promises.writeFile(subtitlePath, ass, "utf8");
-    }
     const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
     const voice = gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural";
     await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", script, "--write-media", voicePath], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-    const videoFilter = subtitleCues.length && await fs.promises.stat(subtitlePath).then(()=>true).catch(()=>false)
-      ? `scale='min(960,iw)':-2,subtitles=${subtitlePath}:fontsdir=/usr/share/fonts/truetype/noto`
-      : "scale='min(960,iw)':-2";
-    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", videoFilter, "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
+    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale='min(960,iw)':-2", "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
     await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
     const stat = await fs.promises.stat(outputPath);
     if (!stat.size) throw new Error("FFmpeg returned an empty video.");
