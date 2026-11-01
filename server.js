@@ -1027,6 +1027,7 @@ app.post("/api/recap/export-job", requireGoogleLogin, (req, res) => {
     script,
     gender: String(req.body?.voice || "female").toLowerCase() === "male" ? "male" : "female",
     rate: ["-5%", "+0%", "+5%"].includes(String(req.body?.rate || "-5%")) ? String(req.body?.rate || "-5%") : "-5%",
+    subtitle: req.body?.subtitle !== false,
     userSub: String(req.googleUser.sub),
     createdAt: Date.now()
   });
@@ -1050,6 +1051,7 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     const script = job.script;
     const gender = job.gender;
     const rate = job.rate;
+    const includeSubtitle = job.subtitle !== false;
     const recapUser = makeUser(req.googleUser);
     ensureCreditWallet(recapUser);
     if (recapUser.creditBalance <= 0) return res.status(429).json({ ok:false, error:"James Movie Recap အတွက် Credit မလုံလောက်ပါ။ Credit ဝယ်ယူပါ။" });
@@ -1058,11 +1060,43 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     const inputPath = path.join(tempDir, "source-video");
     const voicePath = path.join(tempDir, "voice.mp3");
     const outputPath = path.join(tempDir, "recap.mp4");
+    const subtitlePath = path.join(tempDir, "myanmar-subtitles.srt");
     await fs.promises.writeFile(inputPath, input);
     const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
     const voice = gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural";
     await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", script, "--write-media", voicePath], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale='min(960,iw)':-2", "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
+
+    // Build real timed subtitle cues from ordinary newline-separated script text.
+    // Without source subtitle timecodes, lines are distributed across the source video's duration.
+    let videoDuration = 0;
+    const ffprobe = process.env.FFPROBE_PATH || "ffprobe";
+    const probe = await execFileAsync(ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", inputPath], { timeout: 30000, maxBuffer: 1024 * 1024 });
+    videoDuration = Number(String(probe.stdout || "").trim());
+    if (!Number.isFinite(videoDuration) || videoDuration <= 0) throw new Error("Video duration ကို မဖတ်နိုင်ပါ။");
+
+    const lines = script.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (includeSubtitle && lines.length) {
+      const stamp = seconds => {
+        const ms = Math.max(0, Math.round(seconds * 1000));
+        const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), sec = Math.floor(ms % 60000 / 1000), milli = ms % 1000;
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')},${String(milli).padStart(3,'0')}`;
+      };
+      const cueSpan = videoDuration / lines.length;
+      const srt = lines.map((line, index) => {
+        const start = index * cueSpan;
+        const end = index === lines.length - 1 ? videoDuration : (index + 1) * cueSpan;
+        return `${index + 1}\n${stamp(start)} --> ${stamp(end)}\n${line.replace(/\s+/g, ' ')}\n`;
+      }).join('\n');
+      await fs.promises.writeFile(subtitlePath, '\uFEFF' + srt, 'utf8');
+    }
+
+    const filters = [];
+    filters.push("scale='min(960,iw)':-2");
+    if (includeSubtitle && lines.length) {
+      // libass burns Unicode SRT captions into the video; Noto Myanmar is installed by apt.txt.
+      filters.push(`subtitles=${subtitlePath}:charenc=UTF-8:force_style='FontName=Noto Sans Myanmar,FontSize=22,Outline=2,Shadow=1,Alignment=2,MarginV=35'`);
+    }
+    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", filters.join(","), "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
     await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
     const stat = await fs.promises.stat(outputPath);
     if (!stat.size) throw new Error("FFmpeg returned an empty video.");
