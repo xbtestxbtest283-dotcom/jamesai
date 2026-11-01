@@ -1233,6 +1233,63 @@ function setupRecapUI() {
 setupRecapUI();
 
 
+// Detect burned-in English subtitles in sampled video frames and align plain Burmese lines by sequence.
+async function detectRecapSubtitleCues(file, lines, setStatus) {
+  const video = document.createElement('video');
+  video.muted = true; video.playsInline = true;
+  const objectUrl = URL.createObjectURL(file); video.src = objectUrl;
+  try {
+    await new Promise((resolve, reject) => { video.onloadedmetadata = resolve; video.onerror = reject; });
+    const duration = Number(video.duration) || 0;
+    if (!duration || !lines.length) return [];
+    const loadTesseract = async () => {
+      if (window.Tesseract) return;
+      await new Promise((resolve, reject) => {
+        const tag = document.createElement('script'); tag.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        tag.onload = resolve; tag.onerror = () => reject(new Error('OCR library မဖွင့်နိုင်ပါ။ Internet ကိုစစ်ပါ။')); document.head.appendChild(tag);
+      });
+    };
+    try { await loadTesseract(); } catch (e) {
+      setStatus('OCR မရနိုင်ပါ။ Video ကြာချိန်အလိုက် မြန်မာစာကြောင်းတွေကို ခွဲပေးနေပါတယ်…');
+      return lines.map((text,i)=>({start:duration*i/lines.length,end:duration*(i+1)/lines.length,text}));
+    }
+    const worker = await window.Tesseract.createWorker('eng');
+    const canvas = document.createElement('canvas'); canvas.width = 720; canvas.height = 220;
+    const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    const detected = []; let previous = '';
+    const step = duration > 900 ? 2 : 1;
+    for (let t = 0; t < duration; t += step) {
+      video.currentTime = Math.min(t, Math.max(0, duration - 0.05));
+      await new Promise(resolve => { video.onseeked = resolve; });
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const sx = video.videoWidth * 0.08, sy = video.videoHeight * 0.68, sw = video.videoWidth * 0.84, sh = video.videoHeight * 0.30;
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      const result = await worker.recognize(canvas);
+      const text = String(result.data.text || '').replace(/[^\p{L}\p{N} ]/gu,' ').replace(/\s+/g,' ').trim();
+      if (text && text.length > 2 && text.toLowerCase() !== previous.toLowerCase()) {
+        detected.push({start:Math.max(0,t-0.15), text}); previous = text;
+      }
+      if (t % Math.max(step*5, 5) === 0) setStatus(`English subtitle OCR စစ်နေပါတယ်… ${Math.min(100,Math.round(t/duration*100))}%`);
+    }
+    await worker.terminate();
+    // Collapse repeated OCR detections into caption intervals.
+    const spans = detected.map((d,i)=>({start:d.start,end:detected[i+1]?.start ?? duration,text:d.text})).filter(x=>x.end-x.start>=0.5);
+    if (spans.length >= 1) {
+      // Match Burmese lines sequentially to detected English caption intervals.
+      const first = spans[0].start, last = spans[spans.length-1].end;
+      // Divide the detected caption timeline into one cue per ordinary script line.
+      // This preserves the English-caption time window while avoiding simultaneous lines.
+      return lines.map((text,i)=>({
+        start: first + (last-first)*i/lines.length,
+        end: first + (last-first)*(i+1)/lines.length,
+        text
+      }));
+    }
+    setStatus('English subtitle မတွေ့ပါ။ Video ကြာချိန်အလိုက် မြန်မာစာကြောင်းတွေကို အလိုအလျောက်ခွဲပေးနေပါတယ်…');
+    return lines.map((text,i)=>({start:duration*i/lines.length,end:duration*(i+1)/lines.length,text}));
+  } finally { URL.revokeObjectURL(objectUrl); }
+}
+
 // Recap video export: upload source to the server so the phone does not encode video locally.
 function setupRecapVideoExport() {
   const btn = document.querySelector('#exportRecapVideoBtn');
@@ -1250,15 +1307,19 @@ function setupRecapVideoExport() {
     const oldText = btn.textContent;
     let resultUrl = '';
     try {
-      setStatus('Video ကို Server ဆီ ပို့နေပါတယ်… ဖုန်းမှာ encoding မလုပ်ပါ။');
+      setStatus('Video ထဲက English subtitle အချိန်တွေကို OCR နဲ့ စစ်ဆေးနေပါတယ်…');
+      const lines = script.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+      const cues = await detectRecapSubtitleCues(file, lines, setStatus);
       const params = new URLSearchParams({
         script,
         voice: document.querySelector('#recapVoice')?.value || 'female',
-        rate: document.querySelector('#recapVoiceRate')?.value || '-5%'
+        rate: document.querySelector('#recapVoiceRate')?.value || '-5%',
+        subtitle: document.querySelector('#recapSubtitle')?.checked === false ? '0' : '1'
       });
+      setStatus('Video နဲ့ မြန်မာစာတန်းထိုးတွေကို Server ဆီ ပို့နေပါတယ်…');
       const response = await fetch(apiUrl('/api/recap/export?' + params.toString()), {
         method: 'POST',
-        headers: authHeaders({'Content-Type': 'application/octet-stream'}),
+        headers: authHeaders({'Content-Type': 'application/octet-stream', 'X-Recap-Subtitle-Cues': encodeURIComponent(JSON.stringify(cues))}),
         body: file
       });
       if (!response.ok) {
