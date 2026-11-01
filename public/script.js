@@ -254,13 +254,61 @@ function readFile(file) {
   });
 }
 
+// Extract representative still frames locally in the browser. No video is uploaded
+// or stored; only compressed JPEG frames are sent to the vision model.
+function extractVideoFrames(file) {
+  return new Promise((resolve, reject) => {
+    if (file.size > 100 * 1024 * 1024) return reject(new Error(`${file.name} သည် 100 MB ထက်ကြီးနေပါတယ်။`));
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    let finished = false;
+    const cleanup = () => { URL.revokeObjectURL(url); video.removeAttribute("src"); video.load(); };
+    const fail = (message) => { if (finished) return; finished = true; cleanup(); reject(new Error(message)); };
+    video.onerror = () => fail("ဒီ Video Format ကို Browser က ဖတ်မရပါ။ MP4 (H.264) သို့မဟုတ် WebM နဲ့ စမ်းပါ။");
+    video.onloadedmetadata = async () => {
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= 0) return fail("Video ကြာချိန်ကို မဖတ်နိုင်ပါ။");
+      const count = Math.min(12, Math.max(2, Math.ceil(duration / 5)));
+      const times = Array.from({ length: count }, (_, i) => count === 1 ? 0 : Math.min(Math.max(0.05, duration - 0.12), (duration * (i + 0.5)) / count));
+      const canvas = document.createElement("canvas");
+      const maxWidth = 960;
+      const scale = Math.min(1, maxWidth / (video.videoWidth || maxWidth));
+      canvas.width = Math.max(1, Math.round((video.videoWidth || 960) * scale));
+      canvas.height = Math.max(1, Math.round((video.videoHeight || 540) * scale));
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const frames = [];
+      try {
+        for (const time of times) {
+          await new Promise((ok, bad) => {
+            const timer = setTimeout(() => bad(new Error("Video frame ဖတ်ချိန်ကုန်သွားပါတယ်။")), 12000);
+            video.onseeked = () => { clearTimeout(timer); ok(); };
+            video.currentTime = time;
+          });
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          frames.push(canvas.toDataURL("image/jpeg", 0.78));
+        }
+      } catch (e) { return fail(e.message || "Video Frame ထုတ်မရပါ။"); }
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve({ name: file.name, type: file.type || "video/mp4", isVideo: true, duration, frames });
+    };
+    video.src = url;
+  });
+}
+
 async function handleFiles(files) {
   const selected = [...files].slice(0, 6 - pendingAttachments.length);
   if (!selected.length) return;
   for (const file of selected) {
     try {
-      const attachment = await readFile(file);
+      const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(file.name);
+      const attachment = isVideo ? await extractVideoFrames(file) : await readFile(file);
       pendingAttachments.push(attachment);
+      if (isVideo) toast(`Video ထဲမှ ${attachment.frames.length} Frame ထုတ်ပြီးပါပြီ။`);
     } catch (e) {
       toast(`⚠️ ${e.message}`);
     }
