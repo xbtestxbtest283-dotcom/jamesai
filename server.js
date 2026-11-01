@@ -1033,11 +1033,26 @@ app.post("/api/recap/export", requireGoogleLogin, express.raw({ type: "applicati
     const inputPath = path.join(tempDir, "source-video");
     const voicePath = path.join(tempDir, "voice.mp3");
     const outputPath = path.join(tempDir, "recap.mp4");
+    const subtitlePath = path.join(tempDir, "myanmar-subtitles.ass");
     await fs.promises.writeFile(inputPath, input);
+    let subtitleCues = [];
+    try { subtitleCues = JSON.parse(decodeURIComponent(String(req.get("X-Recap-Subtitle-Cues") || ""))); } catch {}
+    if (!Array.isArray(subtitleCues)) subtitleCues = [];
+    subtitleCues = subtitleCues.slice(0, 300).filter(c => c && Number.isFinite(Number(c.start)) && Number.isFinite(Number(c.end)) && String(c.text || "").trim());
+    const assTime = seconds => { const n=Math.max(0,Number(seconds)||0); const h=Math.floor(n/3600),m=Math.floor((n%3600)/60),v=(n%60).toFixed(2).padStart(5,"0"); return `${h}:${String(m).padStart(2,"0")}:${v}`; };
+    const assEscape = value => String(value).replace(/\\/g,"\\\\").replace(/{/g,"\\{").replace(/}/g,"\\}").replace(/\r?\n/g,"\\N");
+    if (subtitleCues.length && String(req.query.subtitle || "1") !== "0") {
+      const events = subtitleCues.map(c => `Dialogue: 0,${assTime(c.start)},${assTime(Math.max(Number(c.start)+0.5,Number(c.end)))},Default,,0,0,0,,${assEscape(c.text)}`).join("\n");
+      const ass = `[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Noto Sans Myanmar,38,&H00FFFFFF,&H000000FF,&H00101010,&H90000000,0,0,0,0,100,100,0,0,1,2,1,2,50,50,42,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n${events}\n`;
+      await fs.promises.writeFile(subtitlePath, ass, "utf8");
+    }
     const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
     const voice = gender === "male" ? "my-MM-ThihaNeural" : "my-MM-NilarNeural";
     await execFileAsync(python, ["-m", "edge_tts", "--voice", voice, "--rate", rate, "--text", script, "--write-media", voicePath], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale='min(960,iw)':-2", "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
+    const videoFilter = subtitleCues.length && await fs.promises.stat(subtitlePath).then(()=>true).catch(()=>false)
+      ? `scale='min(960,iw)':-2,subtitles=${subtitlePath}:fontsdir=/usr/share/fonts/truetype/noto`
+      : "scale='min(960,iw)':-2";
+    const args = ["-y", "-i", inputPath, "-i", voicePath, "-map", "0:v:0", "-map", "1:a:0", "-vf", videoFilter, "-r", "20", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-af", "apad", "-shortest", "-movflags", "+faststart", outputPath];
     await execFileAsync(ffmpeg, args, { timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
     const stat = await fs.promises.stat(outputPath);
     if (!stat.size) throw new Error("FFmpeg returned an empty video.");

@@ -1,0 +1,19 @@
+James AI - Video Visual Reading Patch
+
+What changed:
+- Chat attachment picker now accepts MP4, WebM and MOV video files.
+- Browser extracts up to 12 representative JPEG frames from each selected video (maximum 100 MB per video).
+- Only compressed still frames are sent to the existing /api/chat endpoint; the original video is not uploaded or stored.
+- The vision model is instructed to read visible text/captions/signs, describe pictures and objects, and explain scene changes in chronological order.
+- Existing image attachment support and the existing login/credit/admin systems are retained.
+
+Limitations:
+- This patch analyzes visual frames only; it does not transcribe or analyze audio.
+- Fast cuts or very brief on-screen text may fall between sampled frames.
+- Video decoding depends on the browser/device codec support. MP4 (H.264) is recommended.
+- Uses the configured OpenAI vision-capable model and may incur API usage charges.
+
+Deploy:
+1. Upload/replace the updated project files in the GitHub repository (especially server.js, public/index.html and public/script.js).
+2. Commit changes and deploy the latest commit on Render.
+3. Refresh the app after deployment and attach an MP4/WebM video in chat.
