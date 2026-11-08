@@ -688,6 +688,38 @@ app.get("/api/admin/users", requireAdmin, (req,res) => {
     .sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   res.json({ ok:true, users:result, total:Object.keys(users).length });
 });
+// Permanently remove a user account and its stored user data.
+app.delete("/api/admin/users/:sub", requireAdmin, async (req,res) => {
+  const sub = String(req.params.sub || "").trim();
+  if (!sub || !Object.prototype.hasOwnProperty.call(users, sub)) {
+    return res.status(404).json({ok:false,error:"User မတွေ့ပါ။"});
+  }
+
+  const user = users[sub];
+  const email = String(user?.email || "");
+  const confirmation = String(req.body?.confirmation || "");
+  if (confirmation !== "DELETE") {
+    return res.status(400).json({ok:false,error:"ဖျက်ရန် အတည်ပြုချက် မမှန်ပါ။"});
+  }
+
+  // Delete the cloud record first. If this fails, keep the local account intact.
+  if (supabase) {
+    const { error } = await supabase
+      .from(SUPABASE_USERS_TABLE)
+      .delete()
+      .eq("google_sub", sub);
+    if (error) {
+      console.error("ADMIN USER DELETE ERROR:", error.message);
+      return res.status(500).json({ok:false,error:"Cloud database မှ Account ဖျက်မရပါ။ ထပ်မံကြိုးစားပါ။"});
+    }
+  }
+
+  delete users[sub];
+  await saveUsers();
+  await writeAdminAudit("account_delete", sub, {email});
+  return res.json({ok:true,deleted:true,message:"Account ကို အပြီးဖျက်ပြီးပါပြီ။"});
+});
+
 app.post("/api/admin/users/:sub/ban", requireAdmin, async (req,res) => {
   const sub = String(req.params.sub || "");
   const user = users[sub];
