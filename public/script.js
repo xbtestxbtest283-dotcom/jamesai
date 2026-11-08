@@ -55,6 +55,23 @@ function updateAccountButton() {
   }
 }
 
+function updateHelpAccountProfile() {
+  const avatar = $("#helpProfileAvatar");
+  const name = $("#helpProfileName");
+  const email = $("#helpProfileEmail");
+  const id = $("#helpProfileId");
+  const copy = $("#copyAccountIdBtn");
+  const accountId = String(googleUser?.sub || googleUser?.id || "");
+  if (avatar) {
+    avatar.src = googleUser?.picture || "";
+    avatar.classList.toggle("hidden", !googleUser?.picture);
+  }
+  if (name) name.textContent = googleUser?.name || "Not signed in";
+  if (email) email.textContent = googleUser?.email || "Google Account";
+  if (id) id.textContent = accountId || "—";
+  if (copy) copy.disabled = !accountId;
+}
+
 async function loadGoogleConfig() {
   try {
     const r = await fetch(apiUrl("/api/config"));
@@ -584,8 +601,22 @@ function openView(view) {
   $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   if (view === "history") renderHistory();
   if (view === "plans") loadUsage();
+  if (view === "help") updateHelpAccountProfile();
   sidebar.classList.remove("open");
 }
+
+$("#copyAccountIdBtn")?.addEventListener("click", async () => {
+  const value = String(googleUser?.sub || googleUser?.id || "");
+  if (!value) return toast("Account ID မရှိသေးပါ။ Login ဝင်ပါ။");
+  try { await navigator.clipboard.writeText(value); toast("Account ID copied"); }
+  catch { toast("ID ကို copy မလုပ်နိုင်ပါ။"); }
+});
+$("#helpSearch")?.addEventListener("input", event => {
+  const q = event.target.value.trim().toLowerCase();
+  $$(".help-topic, .help-faqs details").forEach(item => {
+    item.classList.toggle("help-search-hidden", Boolean(q) && !item.textContent.toLowerCase().includes(q));
+  });
+});
 
 $$("[data-view]").forEach(b => b.addEventListener("click", () => openView(b.dataset.view)));
 $$("[data-prompt]").forEach(b => b.addEventListener("click", () => {
@@ -722,6 +753,7 @@ async function renderGoogleButton() {
       localStorage.setItem("jamesai_google_credential", googleCredential);
       localStorage.setItem("jamesai_google_user", JSON.stringify(googleUser));
       updateAccountButton();
+      updateHelpAccountProfile();
       applyAuthGate();
       closeAccountModal();
       await loadUsage();
@@ -775,6 +807,7 @@ async function initAuthentication() {
   await loadGoogleConfig();
   const valid = await validateStoredLogin();
   updateAccountButton();
+  updateHelpAccountProfile();
   applyAuthGate();
 
   if (!valid) {
