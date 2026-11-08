@@ -1,0 +1,14 @@
+James AI Admin - Remove Account update
+
+Changed files:
+- server.js
+- public/james-admin.html
+
+How to use:
+1. Replace the existing project with this updated project (or copy these two changed files into the matching locations).
+2. Deploy/restart the Node.js server.
+3. Open /james-admin.html and sign in with your existing Admin Key.
+4. In Users, search for the account and tap Remove Acc.
+5. Confirm the warning, then type DELETE exactly.
+
+This permanently deletes the user's James AI account data from the local user store and, when configured, the Supabase jamesai_user_data row. It cannot be undone. The user's Google account itself is not deleted.
