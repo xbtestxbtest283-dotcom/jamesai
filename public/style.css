@@ -94,3 +94,35 @@ body.auth-required .app-shell {
 /* Help Center and signed-in account profile */
 .help-content{padding:8px 25px 36px;display:flex;flex-direction:column;gap:16px}.help-search{display:flex;align-items:center;gap:10px;padding:12px 15px;border:1px solid var(--border);border-radius:13px;background:var(--panel)}.help-search span{font-size:22px;color:var(--muted)}.help-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font:inherit}.help-section-title{font-size:16px;margin:8px 0 0}.help-topic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.help-topic{display:flex;align-items:center;gap:12px;min-width:0;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel);color:var(--text);text-decoration:none}.help-topic>span:nth-child(2){display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.help-topic small,.help-card-heading p,.help-profile small{color:var(--muted);font-size:12px;line-height:1.45}.help-topic b{font-size:22px;color:var(--muted)}.help-topic-icon{display:grid;place-items:center;width:40px;height:40px;flex-shrink:0;border-radius:12px;background:#132b3c;color:#38bdf8;font-size:21px}.help-account-card{padding:18px;border:1px solid var(--border);border-radius:17px;background:var(--panel)}.help-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.help-card-heading h3{margin:0 0 5px}.help-card-heading p{margin:0}.help-secure-pill{white-space:nowrap;padding:5px 9px;border-radius:20px;background:#123326;color:#72e0b2;font-size:11px}.help-profile{display:flex;align-items:center;gap:13px;margin:20px 0;padding:14px;border:1px solid var(--border);border-radius:13px;background:#0d1117}.help-profile img{width:58px;height:58px;object-fit:cover;border-radius:50%;background:var(--panel3)}.help-profile img[src=""]{visibility:hidden}.help-profile>div{display:flex;flex-direction:column;gap:5px;min-width:0}.help-profile strong{overflow-wrap:anywhere}.help-id-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px}.help-id-row>div{min-width:0}.help-id-row small{display:block;color:var(--muted);font-size:10px;letter-spacing:.1em;margin-bottom:6px}.help-id-row code{display:block;overflow-wrap:anywhere;color:#9ddcff;font-size:12px}.help-id-row button{flex-shrink:0}.help-security-note{font-size:12px;line-height:1.65;color:var(--muted);margin:12px 2px 0}.help-faqs{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--panel)}.help-faqs details{padding:15px;border-bottom:1px solid var(--border)}.help-faqs details:last-child{border-bottom:0}.help-faqs summary{cursor:pointer;font-weight:600}.help-faqs p{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.65}.help-search-hidden{display:none!important}
 @media(max-width:600px){.help-content{padding:8px 14px 28px}.help-topic-grid{grid-template-columns:1fr}.help-topic{padding:12px}.help-id-row{align-items:flex-start}.help-id-row button{padding:8px 10px}}
+
+
+/* ===== Universal responsive screen fit patch ===== */
+html,body{width:100%;min-width:0;overflow-x:hidden}
+.app-shell{width:100%;min-width:0;min-height:100dvh}
+.layout{width:100%;min-width:0;min-height:calc(100dvh - 64px)}
+.content{width:100%;min-width:0;flex:1 1 auto}
+.view{width:100%;max-width:none;min-width:0}
+.view.active{width:100%;min-width:0}
+#recapView{width:100%;min-width:0}
+#recapView .recap-shell{
+  width:100%;
+  max-width:1280px;
+  min-width:0;
+  margin:0 auto;
+  padding:clamp(14px,2vw,30px) clamp(16px,3vw,48px) 48px;
+}
+@media (min-width:1100px){
+  #recapView .recap-shell{max-width:1400px;padding-left:clamp(28px,4vw,80px);padding-right:clamp(28px,4vw,80px)}
+}
+@media (min-width:761px) and (max-width:1100px){
+  .sidebar{width:230px;flex:0 0 230px}
+  #recapView .recap-shell{max-width:none;padding-left:24px;padding-right:24px}
+}
+@media (max-width:760px){
+  .layout{min-height:calc(100dvh - 64px)}
+  .content,.view,.view.active{width:100%;max-width:100%}
+  #recapView .recap-shell{width:100%;max-width:100%;padding:12px 14px 32px}
+}
+/* Prevent fixed-size children from causing cropped layouts */
+img,video,canvas,svg{max-width:100%}
+input,textarea,select,button{max-width:100%}
