@@ -98,13 +98,13 @@ async function load() {
       const approve = document.createElement('button');
       approve.className = 'ok';
       approve.textContent = 'Approve / Activate';
-      approve.addEventListener('click', () => o.type === 'credit' ? approveCredit(o.sub) : activate(o.sub, o.planId));
+      approve.addEventListener('click', () => o.type === 'credit' ? approveCredit(o.sub, o.orderId) : activate(o.sub, o.planId, o.orderId));
       card.appendChild(approve);
 
       const rejectBtn = document.createElement('button');
       rejectBtn.className = 'bad';
       rejectBtn.textContent = 'Reject';
-      rejectBtn.addEventListener('click', () => o.type === 'credit' ? rejectCredit(o.sub) : reject(o.sub));
+      rejectBtn.addEventListener('click', () => o.type === 'credit' ? rejectCredit(o.sub, o.orderId) : reject(o.sub, o.orderId));
       card.appendChild(rejectBtn);
 
       $('orders').appendChild(card);
@@ -115,24 +115,24 @@ async function load() {
   }
 }
 
-async function approveCredit(sub) {
+async function approveCredit(sub, orderId) {
   try {
-    const r = await fetch('/api/admin/credits/approve', {method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':$('secret').value.trim()},body:JSON.stringify({sub})});
+    const r = await fetch('/api/admin/credits/approve', {method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':$('secret').value.trim()},body:JSON.stringify({sub, orderId})});
     const d = await r.json();
     alert(r.ok && d.ok ? `Credit approved. Balance: ${d.credits}` : (d.error || 'Approval failed'));
     if (r.ok && d.ok) load();
   } catch(err) { alert('Connection error: ' + err.message); }
 }
-async function rejectCredit(sub) {
+async function rejectCredit(sub, orderId) {
   try {
-    const r = await fetch('/api/admin/credits/reject', {method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':$('secret').value.trim()},body:JSON.stringify({sub})});
+    const r = await fetch('/api/admin/credits/reject', {method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':$('secret').value.trim()},body:JSON.stringify({sub, orderId})});
     const d = await r.json();
     alert(r.ok && d.ok ? 'Credit order rejected' : (d.error || 'Rejection failed'));
     if (r.ok && d.ok) load();
   } catch(err) { alert('Connection error: ' + err.message); }
 }
 
-async function activate(sub, planId) {
+async function activate(sub, planId, orderId) {
   try {
     const r = await fetch('/api/admin/activate', {
       method: 'POST',
@@ -140,7 +140,7 @@ async function activate(sub, planId) {
         'Content-Type': 'application/json',
         'x-admin-secret': $('secret').value.trim()
       },
-      body: JSON.stringify({sub, planId})
+      body: JSON.stringify({sub, planId, orderId})
     });
 
     const d = await r.json();
@@ -151,7 +151,7 @@ async function activate(sub, planId) {
   }
 }
 
-async function reject(sub) {
+async function reject(sub, orderId) {
   try {
     const r = await fetch('/api/admin/reject', {
       method: 'POST',
@@ -159,7 +159,7 @@ async function reject(sub) {
         'Content-Type': 'application/json',
         'x-admin-secret': $('secret').value.trim()
       },
-      body: JSON.stringify({sub})
+      body: JSON.stringify({sub, orderId})
     });
 
     const d = await r.json();
