@@ -894,9 +894,8 @@ async function openPurchase(planId, plans) {
       const r = await fetch(apiUrl("/api/purchase"), { method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify({planId}) });
       const data = await r.json().catch(()=>({}));
       if (!r.ok || !data.ok) throw new Error(data.error || "Order creation failed");
-      const wallets = `${data.wavePayPhone ? `<div class="wavepay-box"><strong>WavePay</strong><div class="wave-number">${escapeHtml(data.wavePayPhone)}</div>${data.wavePayName ? `<div>${escapeHtml(data.wavePayName)}</div>` : ""}</div>` : ""}${data.kbzPayPhone ? `<div class="wavepay-box"><strong>KBZPay</strong><div class="wave-number">${escapeHtml(data.kbzPayPhone)}</div>${data.kbzPayName ? `<div>${escapeHtml(data.kbzPayName)}</div>` : ""}</div>` : ""}`;
       const payment = data.paymentUrl ? `<a class="primary-btn payment-link" href="${escapeHtml(data.paymentUrl)}" target="_blank" rel="noopener">Open Payment</a>` : "";
-      $("#orderResult").innerHTML = `<div class="order-box"><strong>Order ID</strong><code>${escapeHtml(data.orderId)}</code>${wallets}<div class="payment-input"><label>ငွေလွှဲမည့်နည်းလမ်း<select id="planPaymentMethod"><option value="wavepay">WavePay</option><option value="kbzpay">KBZPay</option></select></label></div><p>ပေးရန် — <strong>${escapeHtml(data.price)}</strong></p><p>${escapeHtml(data.instructions)}</p>${payment}<label>Transaction ID<input id="paymentTxId" class="payment-input" placeholder="ဥပမာ TX123456"></label><label>ငွေလွှဲ Screenshot<input id="paymentShot" class="payment-input" type="file" accept="image/*"></label><button id="submitPaymentBtn" class="primary-btn google-custom-btn" type="button">Submit Payment</button><div id="submitPaymentStatus" class="small-note"></div></div>`;
+      $("#orderResult").innerHTML = `<div class="order-box"><strong>Order ID</strong><code>${escapeHtml(data.orderId)}</code><div id="planWalletDetails"></div><div class="payment-input"><label>ငွေလွှဲမည့်နည်းလမ်း<select id="planPaymentMethod"><option value="wavepay">WavePay</option><option value="kbzpay">KBZPay</option></select></label></div><p>ပေးရန် — <strong>${escapeHtml(data.price)}</strong></p><p>ရွေးချယ်ထားသော Payment နည်းလမ်း၏ အကောင့်သို့ ငွေလွှဲပြီး Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ဆေးပြီးမှ Plan activate လုပ်ပါမယ်။</p>${payment}<label>Transaction ID<input id="paymentTxId" class="payment-input" placeholder="ဥပမာ TX123456"></label><label>ငွေလွှဲ Screenshot<input id="paymentShot" class="payment-input" type="file" accept="image/*"></label><button id="submitPaymentBtn" class="primary-btn google-custom-btn" type="button">Submit Payment</button><div id="submitPaymentStatus" class="small-note"></div></div>`;
       $("#submitPaymentBtn").addEventListener("click", async () => {
         const tx = $("#paymentTxId").value.trim(); const file = $("#paymentShot").files[0];
         if (!tx || !file) { $("#submitPaymentStatus").textContent = "Transaction ID နဲ့ Screenshot နှစ်ခုလုံးလိုပါတယ်။"; return; }
@@ -905,6 +904,15 @@ async function openPurchase(planId, plans) {
           try { const r2 = await fetch(apiUrl("/api/purchase/submit"), {method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify({transactionId:tx,screenshot:reader.result,paymentMethod:$("#planPaymentMethod").value})}); const d2=await r2.json(); if(!r2.ok||!d2.ok) throw new Error(d2.error||"Submit failed"); $("#submitPaymentStatus").textContent=d2.message; $("#submitPaymentBtn").disabled=true; } catch(e) { $("#submitPaymentStatus").textContent=e.message; }
         }; reader.readAsDataURL(file);
       });
+      const renderPlanWallet = () => {
+        const method = $("#planPaymentMethod").value;
+        const phone = method === "kbzpay" ? data.kbzPayPhone : data.wavePayPhone;
+        const name = method === "kbzpay" ? data.kbzPayName : data.wavePayName;
+        const label = method === "kbzpay" ? "KBZPay" : "WavePay";
+        $("#planWalletDetails").innerHTML = phone ? `<div class="wavepay-box"><strong>${label}</strong><div class="wave-number">${escapeHtml(phone)}</div>${name ? `<div>${escapeHtml(name)}</div>` : ""}</div>` : `<p class="payment-warn">${label} အကောင့်အချက်အလက် မရရှိပါ။ Render Environment Variables ကို စစ်ဆေးပါ။</p>`;
+      };
+      $("#planPaymentMethod").addEventListener("change", renderPlanWallet);
+      renderPlanWallet();
     } catch(e) {
       $("#orderResult").innerHTML = `<p class="payment-warn">${escapeHtml(e.message)}</p>`;
     } finally { btn.disabled = false; btn.textContent = "Create Order"; }
@@ -1144,8 +1152,7 @@ function setupRecapUI() {
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) throw new Error(d.error || 'Order ဖန်တီးမရပါ။');
-        const wallets = `${d.wavePayPhone ? `<div style="background:#0d261f;border:1px solid #205943;border-radius:16px;padding:16px;margin:14px 0"><strong>WavePay</strong><div style="font-size:24px;font-weight:700;margin:7px 0">${escapeHtml(d.wavePayPhone)}</div>${d.wavePayName ? `<div>${escapeHtml(d.wavePayName)}</div>` : ''}</div>` : ''}${d.kbzPayPhone ? `<div style="background:#0d261f;border:1px solid #205943;border-radius:16px;padding:16px;margin:14px 0"><strong>KBZPay</strong><div style="font-size:24px;font-weight:700;margin:7px 0">${escapeHtml(d.kbzPayPhone)}</div>${d.kbzPayName ? `<div>${escapeHtml(d.kbzPayName)}</div>` : ''}</div>` : ''}`;
-        status.innerHTML = `<div style="background:#0c0e14;border:1px solid #292d39;border-radius:18px;padding:16px;margin-top:14px"><p style="font-size:20px;font-weight:700;margin:0 0 10px">Order ID</p><code style="display:block;overflow-wrap:anywhere;background:#07080c;padding:13px;border-radius:10px">${escapeHtml(d.orderId)}</code><p style="font-size:16px">Credit: ${Number(d.credits)} · Price: ${Number(d.price).toLocaleString()} MMK</p>${wallets}<label style="display:block;margin:12px 0">ငွေလွှဲမည့်နည်းလမ်း<select id="creditPaymentMethod" class="payment-input"><option value="wavepay">WavePay</option><option value="kbzpay">KBZPay</option></select></label><p style="color:#aeb4c2;line-height:1.7">${escapeHtml(d.instructions || 'WavePay ဖြင့် ငွေလွှဲပြီး Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။')}</p><label style="display:block;margin:14px 0">Transaction ID<input id="creditPaymentTxId" class="payment-input" placeholder="ဥပမာ TX123456" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:14px;border-radius:12px"></label><label style="display:block;margin:14px 0">ငွေလွှဲ Screenshot<input id="creditPaymentShot" class="payment-input" type="file" accept="image/*" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:12px;border-radius:12px"></label><button id="creditSubmitPaymentBtn" type="button" class="primary-btn google-custom-btn" style="width:100%">Submit Payment</button><div id="creditPaymentStatus" aria-live="polite" style="margin-top:10px"></div></div>`;
+        status.innerHTML = `<div style="background:#0c0e14;border:1px solid #292d39;border-radius:18px;padding:16px;margin-top:14px"><p style="font-size:20px;font-weight:700;margin:0 0 10px">Order ID</p><code style="display:block;overflow-wrap:anywhere;background:#07080c;padding:13px;border-radius:10px">${escapeHtml(d.orderId)}</code><p style="font-size:16px">Credit: ${Number(d.credits)} · Price: ${Number(d.price).toLocaleString()} MMK</p><div id="creditWalletDetails"></div><label style="display:block;margin:12px 0">ငွေလွှဲမည့်နည်းလမ်း<select id="creditPaymentMethod" class="payment-input"><option value="wavepay">WavePay</option><option value="kbzpay">KBZPay</option></select></label><p style="color:#aeb4c2;line-height:1.7">ငွေလွှဲမည့်နည်းလမ်းကို ရွေးပြီး အောက်တွင်ပြသသော အကောင့်သို့ ငွေလွှဲပါ။ Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။</p><label style="display:block;margin:14px 0">Transaction ID<input id="creditPaymentTxId" class="payment-input" placeholder="ဥပမာ TX123456" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:14px;border-radius:12px"></label><label style="display:block;margin:14px 0">ငွေလွှဲ Screenshot<input id="creditPaymentShot" class="payment-input" type="file" accept="image/*" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:12px;border-radius:12px"></label><button id="creditSubmitPaymentBtn" type="button" class="primary-btn google-custom-btn" style="width:100%">Submit Payment</button><div id="creditPaymentStatus" aria-live="polite" style="margin-top:10px"></div></div>`;
         createBtn.style.display = 'none';
         const submitBtn = status.querySelector('#creditSubmitPaymentBtn');
         submitBtn.addEventListener('click', async () => {
@@ -1168,6 +1175,15 @@ function setupRecapUI() {
           reader.onerror = () => { paymentStatus.textContent = 'Screenshot ဖတ်မရပါ။ ပြန်ရွေးပါ။'; submitBtn.disabled = false; submitBtn.textContent = 'Submit Payment'; };
           reader.readAsDataURL(file);
         });
+        const renderCreditWallet = () => {
+          const method = status.querySelector('#creditPaymentMethod').value;
+          const phone = method === 'kbzpay' ? d.kbzPayPhone : d.wavePayPhone;
+          const name = method === 'kbzpay' ? d.kbzPayName : d.wavePayName;
+          const label = method === 'kbzpay' ? 'KBZPay' : 'WavePay';
+          status.querySelector('#creditWalletDetails').innerHTML = phone ? `<div style="background:#0d261f;border:1px solid #205943;border-radius:16px;padding:16px;margin:14px 0"><strong>${label}</strong><div style="font-size:24px;font-weight:700;margin:7px 0">${escapeHtml(phone)}</div>${name ? `<div>${escapeHtml(name)}</div>` : ''}</div>` : `<p style="color:#ffb4ba">${label} အကောင့်အချက်အလက် မရရှိပါ။ Render Environment Variables ကို စစ်ဆေးပါ။</p>`;
+        };
+        status.querySelector('#creditPaymentMethod').addEventListener('change', renderCreditWallet);
+        renderCreditWallet();
       } catch(e) {
         status.textContent = e.message;
         modal.querySelectorAll('[data-pack]').forEach(b => b.disabled = false);

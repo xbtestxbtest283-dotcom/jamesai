@@ -126,3 +126,12 @@ html,body{width:100%;min-width:0;overflow-x:hidden}
 /* Prevent fixed-size children from causing cropped layouts */
 img,video,canvas,svg{max-width:100%}
 input,textarea,select,button{max-width:100%}
+
+/* Mobile purchase modal: keep the dialog fixed and scroll its content, not the page. */
+#purchaseModal{display:flex;align-items:center;justify-content:center;overflow:hidden;padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));}
+#purchaseModal .purchase-card{width:min(620px,100%);max-height:calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:24px 18px;text-align:left;}
+#purchaseModal .purchase-card h2{text-align:center;padding-right:30px;}
+#purchaseBody{min-height:0;overflow:visible;touch-action:pan-y;}
+#purchaseBody input,#purchaseBody select{font-size:16px;}
+#creditShopModal{display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;overscroll-behavior:contain;touch-action:pan-y;}
+#creditShopModal>section{max-height:calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
