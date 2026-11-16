@@ -70,6 +70,8 @@ const PAYMENT_URLS = {
 };
 const WAVE_PAY_PHONE = String(process.env.WAVE_PAY_PHONE || "").trim();
 const WAVE_PAY_NAME = String(process.env.WAVE_PAY_NAME || "").trim();
+const KBZ_PAY_PHONE = String(process.env.KBZ_PAY_PHONE || "").trim();
+const KBZ_PAY_NAME = String(process.env.KBZ_PAY_NAME || "").trim();
 const ADMIN_PAYMENT_SECRET = String(process.env.ADMIN_PAYMENT_SECRET || "").trim();
 const ADMIN_KEY = String(process.env.ADMIN_KEY || "").trim();
 const ADMIN_TOKEN_SECRET = String(process.env.ADMIN_TOKEN_SECRET || ADMIN_KEY || "").trim();
@@ -289,11 +291,12 @@ function paymentInfoFor(planId, user) {
   return {
     plan: planId, price: PLAN_PRICES[planId], paymentUrl: PAYMENT_URLS[planId],
     wavePayPhone: WAVE_PAY_PHONE, wavePayName: WAVE_PAY_NAME,
-    instructions: WAVE_PAY_PHONE
-      ? "WavePay နံပါတ်ကိုသုံးပြီး အထက်ပါပမာဏကို လွှဲပေးပါ။ ပြီးရင် Transaction ID နဲ့ ငွေလွှဲ Screenshot တင်ပြီး Submit Payment လုပ်ပါ။ Admin စစ်ပြီးမှ plan activate လုပ်ပါမယ်။"
+    kbzPayPhone: KBZ_PAY_PHONE, kbzPayName: KBZ_PAY_NAME,
+    instructions: (WAVE_PAY_PHONE || KBZ_PAY_PHONE)
+      ? "WavePay သို့မဟုတ် KBZPay တစ်ခုကိုရွေးပြီး အထက်ပါပမာဏကို လွှဲပေးပါ။ Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ပြီးမှ Plan activate လုပ်ပါမယ်။"
       : PAYMENT_URLS[planId]
         ? "Payment link ကိုဖွင့်ပြီး ငွေပေးချေပါ။ Payment provider က အတည်ပြုပြီးမှ plan activate လုပ်ပါမယ်။"
-        : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ .env ထဲမှာ WAVE_PAY_PHONE ထည့်ပါ။",
+        : "Payment နံပါတ် မသတ်မှတ်ရသေးပါ။ Render Environment ထဲမှာ WAVE_PAY_PHONE သို့မဟုတ် KBZ_PAY_PHONE ထည့်ပါ။",
     userEmail: user.email
   };
 }
@@ -528,6 +531,7 @@ app.post("/api/purchase/submit", requireGoogleLogin, async (req, res) => {
   const screenshot = String(req.body?.screenshot || "").trim();
   if (!transactionId) return res.status(400).json({ok:false,error:"Transaction ID ထည့်ပါ။"});
   if (!screenshot || !screenshot.startsWith("data:image/")) return res.status(400).json({ok:false,error:"ငွေလွှဲ Screenshot တင်ပါ။"});
+  order.paymentMethod = String(req.body?.paymentMethod || "wavepay").toLowerCase() === "kbzpay" ? "kbzpay" : "wavepay";
   order.transactionId = transactionId;
   order.screenshot = screenshot;
   order.submittedAt = nowMs();
@@ -564,6 +568,7 @@ app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
   res.json({
     ok:true, orderId, credits:pack.credits, price:pack.price,
     wavePayPhone: WAVE_PAY_PHONE, wavePayName: WAVE_PAY_NAME,
+    kbzPayPhone: KBZ_PAY_PHONE, kbzPayName: KBZ_PAY_NAME,
     instructions: WAVE_PAY_PHONE
       ? "အောက်ပါ WavePay နံပါတ်သို့ ငွေလွှဲပါ။ ပြီးရင် Transaction ID နဲ့ ငွေလွှဲ Screenshot ကို Submit Payment လုပ်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။"
       : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ Admin ထံ ဆက်သွယ်ပါ။"
@@ -584,6 +589,7 @@ app.post("/api/credits/submit", requireGoogleLogin, async (req,res) => {
   const screenshot = String(req.body?.screenshot || "").trim();
   if (!transactionId) return res.status(400).json({ok:false,error:"Transaction ID ထည့်ပါ။"});
   if (!screenshot.startsWith("data:image/")) return res.status(400).json({ok:false,error:"ငွေလွှဲ Screenshot တင်ပါ။"});
+  order.paymentMethod = String(req.body?.paymentMethod || "wavepay").toLowerCase() === "kbzpay" ? "kbzpay" : "wavepay";
   order.transactionId = transactionId;
   order.screenshot = screenshot;
   order.submittedAt = nowMs();

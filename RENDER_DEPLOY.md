@@ -30,6 +30,8 @@ Set secrets in Render Environment Variables, not in source code:
 - `POLLINATIONS_API_KEY` (if using Pollinations images)
 - `WAVE_PAY_PHONE`
 - `WAVE_PAY_NAME`
+- `KBZ_PAY_PHONE`
+- `KBZ_PAY_NAME`
 - `ADMIN_PAYMENT_SECRET`
 - `GOOGLE_CLIENT_ID`
 

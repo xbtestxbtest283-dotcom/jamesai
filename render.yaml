@@ -25,6 +25,10 @@ services:
         sync: false
       - key: WAVE_PAY_NAME
         sync: false
+      - key: KBZ_PAY_PHONE
+        sync: false
+      - key: KBZ_PAY_NAME
+        sync: false
       - key: PLAN_PLUS7_PRICE
         value: "10000 MMK"
       - key: PLAN_PLUS15_PRICE

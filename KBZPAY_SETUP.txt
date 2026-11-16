@@ -1,0 +1,14 @@
+James AI KBZPay setup (Render Environment Variables)
+
+Add these two variables in Render -> James AI service -> Environment:
+
+KBZ_PAY_PHONE=09762153494
+KBZ_PAY_NAME=Mg Win Khant Kyaw
+
+Keep the existing WavePay variables unchanged:
+WAVE_PAY_PHONE
+WAVE_PAY_NAME
+
+Save Changes and redeploy/restart the service. Do not put these values in public frontend JavaScript.
+
+The purchase screens for Plans and James Recap Credits show both configured payment accounts and let the customer select WavePay or KBZPay. The selected method is saved with the submitted payment order for admin review. Admin approval remains manual.
