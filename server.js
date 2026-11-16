@@ -70,8 +70,8 @@ const PAYMENT_URLS = {
 };
 const WAVE_PAY_PHONE = String(process.env.WAVE_PAY_PHONE || "").trim();
 const WAVE_PAY_NAME = String(process.env.WAVE_PAY_NAME || "").trim();
-const KBZ_PAY_PHONE = String(process.env.KBZ_PAY_PHONE || "").trim();
-const KBZ_PAY_NAME = String(process.env.KBZ_PAY_NAME || "").trim();
+const KBZ_PAY_PHONE = String(process.env.KBZ_PAY_PHONE || "09762153494").trim();
+const KBZ_PAY_NAME = String(process.env.KBZ_PAY_NAME || "Mg Win Khant Kyaw").trim();
 const ADMIN_PAYMENT_SECRET = String(process.env.ADMIN_PAYMENT_SECRET || "").trim();
 const ADMIN_KEY = String(process.env.ADMIN_KEY || "").trim();
 const ADMIN_TOKEN_SECRET = String(process.env.ADMIN_TOKEN_SECRET || ADMIN_KEY || "").trim();
@@ -293,7 +293,7 @@ function paymentInfoFor(planId, user) {
     wavePayPhone: WAVE_PAY_PHONE, wavePayName: WAVE_PAY_NAME,
     kbzPayPhone: KBZ_PAY_PHONE, kbzPayName: KBZ_PAY_NAME,
     instructions: (WAVE_PAY_PHONE || KBZ_PAY_PHONE)
-      ? "WavePay သို့မဟုတ် KBZPay တစ်ခုကိုရွေးပြီး အထက်ပါပမာဏကို လွှဲပေးပါ။ Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ပြီးမှ Plan activate လုပ်ပါမယ်။"
+      ? "ငွေလွှဲမည့်နည်းလမ်းကို ရွေးပြီး အောက်တွင်ပြသသော အကောင့်သို့ ငွေလွှဲပါ။ Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ပြီးမှ Plan activate လုပ်ပါမယ်။"
       : PAYMENT_URLS[planId]
         ? "Payment link ကိုဖွင့်ပြီး ငွေပေးချေပါ။ Payment provider က အတည်ပြုပြီးမှ plan activate လုပ်ပါမယ်။"
         : "Payment နံပါတ် မသတ်မှတ်ရသေးပါ။ Render Environment ထဲမှာ WAVE_PAY_PHONE သို့မဟုတ် KBZ_PAY_PHONE ထည့်ပါ။",
@@ -569,9 +569,7 @@ app.post("/api/credits/order", requireGoogleLogin, async (req, res) => {
     ok:true, orderId, credits:pack.credits, price:pack.price,
     wavePayPhone: WAVE_PAY_PHONE, wavePayName: WAVE_PAY_NAME,
     kbzPayPhone: KBZ_PAY_PHONE, kbzPayName: KBZ_PAY_NAME,
-    instructions: WAVE_PAY_PHONE
-      ? "အောက်ပါ WavePay နံပါတ်သို့ ငွေလွှဲပါ။ ပြီးရင် Transaction ID နဲ့ ငွေလွှဲ Screenshot ကို Submit Payment လုပ်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။"
-      : "WavePay နံပါတ် မသတ်မှတ်ရသေးပါ။ Admin ထံ ဆက်သွယ်ပါ။"
+    instructions: "ငွေလွှဲမည့်နည်းလမ်းကို ရွေးပြီး အောက်တွင်ပြသသော အကောင့်သို့ ငွေလွှဲပါ။ Transaction ID နှင့် Screenshot တင်ပါ။ Admin စစ်ဆေးပြီးမှ Credit ထည့်ပေးပါမည်။"
   });
 });
 

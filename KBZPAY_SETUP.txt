@@ -1,14 +1,17 @@
-James AI KBZPay setup (Render Environment Variables)
+James AI KBZPay + Mobile Scroll Fix
 
-Add these two variables in Render -> James AI service -> Environment:
-
+Render Environment Variables:
 KBZ_PAY_PHONE=09762153494
 KBZ_PAY_NAME=Mg Win Khant Kyaw
 
-Keep the existing WavePay variables unchanged:
+Keep existing WavePay variables unchanged:
 WAVE_PAY_PHONE
 WAVE_PAY_NAME
 
-Save Changes and redeploy/restart the service. Do not put these values in public frontend JavaScript.
+The server has the provided KBZPay account as a fallback, so it can display even before the Render variables are added. Still add the two variables above in Render for configuration. Save Changes and redeploy/restart.
 
-The purchase screens for Plans and James Recap Credits show both configured payment accounts and let the customer select WavePay or KBZPay. The selected method is saved with the submitted payment order for admin review. Admin approval remains manual.
+Plan Purchase and James Recap Credit purchase now show the account matching the selected payment method. Selecting KBZPay displays the KBZPay number/name; selecting WavePay displays the WavePay number/name. The selected method is sent with the payment submission for admin review.
+
+The mobile Plan Purchase modal and Credit Shop modal now support vertical scrolling, including the lower Transaction ID and screenshot upload controls.
+
+Admin approval remains manual. No automatic payment verification is added.
